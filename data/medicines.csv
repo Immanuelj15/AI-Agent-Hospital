@@ -1,0 +1,51 @@
+Medicine_ID,Medicine_Name,Strength,Use_Case,Alternative,Stock,Dosage_Instruction,Side_Effects,Price,Manufacturer
+1,Paracetamol,500mg,"Fever, Headache",Crocin,Yes,"1 tablet every 6 hrs","Nausea, Liver toxicity (if overdosed)",1.50,PharmaCorp
+2,Amoxicillin,250mg,Bacterial Infection,Augmentin,No,"1 capsule every 8 hrs","Diarrhea, Skin rash",5.00,BioMeds
+3,Cetirizine,10mg,"Allergy, Cold",Levocetirizine,Yes,1 tablet at night,"Drowsiness, Dry mouth",0.80,AllergyFix
+4,Metformin,500mg,Diabetes,Glimepiride,Yes,1 tablet after meals,"Nausea, Stomach upset",2.00,GlucoCare
+5,Ibuprofen,400mg,"Pain, Inflammation",Diclofenac,No,"1 tablet every 8 hrs","Stomach pain, Heartburn",1.20,PainFree
+6,Ranitidine,150mg,Acidity,Famotidine,Yes,1 tablet before meals,"Headache, Dizziness",1.00,AcidStop
+7,ORS Solution,200ml,Dehydration,Electral Powder,Yes,"As directed, sip slowly",None,1.50,HydratePlus
+8,Vitamin C,500mg,Immunity Boost,Zincovit,Yes,1 tablet daily,"Stomach cramps (high dose)",3.00,VitaLife
+9,Azithromycin,500mg,Throat Infection,Clarithromycin,Yes,"1 tablet daily for 3 days","Diarrhea, Nausea",10.00,Z-Pack
+10,Insulin,10ml,Diabetes,Human Mixtard,No,As prescribed by doctor,"Hypoglycemia, Weight gain",50.00,Diabeto
+11,Aspirin,75mg,Heart Health,Clopidogrel,Yes,1 tablet daily after food,"Gastritis, Bleeding risk",0.50,HeartSafe
+12,Atorvastatin,10mg,High Cholesterol,Rosuvastatin,Yes,1 tablet at night,"Muscle pain, Digestive issues",4.00,LipidControl
+13,Pantoprazole,40mg,"Acidity, GERD",Omeprazole,Yes,1 tablet before breakfast,"Headache, Diarrhea",3.50,StomachGuard
+14,Losartan,50mg,Hypertension,Telmisartan,No,1 tablet daily,"Dizziness, Fatigue",2.50,BPControl
+15,Metoprolol,25mg,"High BP, Angina",Atenolol,Yes,1 tablet daily,"Slow heart rate, Tiredness",2.00,HeartBeat
+16,Gabapentin,300mg,Nerve Pain,Pregabalin,Yes,1 capsule at night,"Dizziness, Sleepiness",6.00,NeuroRelief
+17,Thyroxine,50mcg,Hypothyroidism,Eltroxin,Yes,1 tablet empty stomach morning,"Palpitations (if overdose)",1.00,ThyroCare
+18,Prednisolone,5mg,"Allergy, Inflammation",Methylprednisolone,No,As prescribed,"Weight gain, Mood changes",0.90,SteroidWorks
+19,Montelukast,10mg,"Asthma, Allergy",Levocetirizine,Yes,1 tablet at night,"Vivid dreams, Headache",4.50,Respira
+20,Alprazolam,0.25mg,Anxiety,Clonazepam,No,As prescribed,"Drowsiness, Dependence",2.00,CalmMind
+21,Domperidone,10mg,"Nausea, Vomiting",Metoclopramide,Yes,"1 tablet before meals",Headache,1.00,StopNausea
+22,Ondansetron,4mg,Vomiting,Granisetron,Yes,1 tablet as needed,"Constipation, Headache",3.00,AntiEmetic
+23,Furosemide,40mg,Edema,Torsemide,Yes,1 tablet morning,"Electrolyte imbalance",1.20,WaterAway
+24,Ciprofloxacin,500mg,Bacterial Infection,Levofloxacin,Yes,"1 tablet every 12 hrs","Tendonitis, Nausea",6.00,CiproKill
+25,Fluconazole,150mg,Fungal Infection,Itraconazole,Yes,"1 tablet once weekly",Nausea,12.00,FungiGon
+26,Dicyclomine,20mg,Stomach Pain,Drotaverine,Yes,"1 tablet as needed","Dry mouth, Dizziness",1.50,SpasmoRelief
+27,Sildenafil,50mg,Erectile Dysfunction,Tadalafil,Yes,1 tablet 1 hr before activity,"Headache, Flushing",8.00,MenHealth
+28,Finasteride,1mg,Hair Loss,Minoxidil,Yes,1 tablet daily,"Libido loss",5.00,HairGrow
+29,Loratadine,10mg,Allergy,Fexofenadine,Yes,1 tablet daily,"Drowsiness (mild)",1.00,AllerFree
+30,Dextromethorphan,100ml,Dry Cough,Codeine Syrup,No,"10ml every 6 hrs",Drowsiness,4.00,CoughSyrup
+31,Paracetamol,650mg,"High Fever",Dolo 650,Yes,"1 tablet every 6 hrs","Nausea, Liver toxicity",1.80,PharmaCorp
+32,Mefenamic Acid,500mg,Period Pain,Ibuprofen,Yes,"1 tablet as needed","Stomach pain",2.00,FemPain
+33,Tramadol,50mg,Severe Pain,Tapentadol,No,As prescribed,"Nausea, Dizziness",5.00,PainKiller
+34,Clindamycin,300mg,Infection,Lincomycin,Yes,"1 capsule every 6 hrs","Diarrhea, Nausea",7.00,DermaCure
+35,Isotretinoin,20mg,Severe Acne,Doxycycline,No,1 capsule daily after fat meal,"Dry lips, Sun sensitivity",20.00,AcneClear
+36,Terbinafine,250mg,Fungal Infection,Griseofulvin,Yes,1 tablet daily for 2 weeks,"Taste disturbance",15.00,FungiStop
+37,Amlodipine,5mg,Hypertension,Nifedipine,Yes,1 tablet daily,"Swollen ankles",1.50,BPSafe
+38,Enalapril,5mg,Hypertension,Lisinopril,Yes,1 tablet daily,Dry cough,1.20,ACEInhibit
+39,Warfarin,5mg,Blood Thinner,Acitrom,No,Strictly as prescribed,Bleeding,3.00,ClotBuster
+40,Digoxin,0.25mg,Heart Failure,None,Yes,As prescribed,Nausea,2.00,HeartTone
+41,Propranolol,40mg,"Anxiety, Tremors",Metoprolol,Yes,"1 tablet as needed","Tiredness, Cold hands",1.50,CalmHeart
+42,Amitriptyline,10mg,Depression,Nortriptyline,Yes,1 tablet at night,"Dry mouth, Weight gain",1.00,MoodLift
+43,Sertraline,50mg,Depression,Escitalopram,Yes,1 tablet morning,"Insomnia, Nausea",4.00,HappyMind
+44,Quetiapine,25mg,Insomnia,Olanzapine,Yes,1 tablet at night,"Drowsiness, Weight gain",5.00,SleepWell
+45,Zolpidem,5mg,Insomnia,Zopiclone,No,1 tablet at night,"Drowsiness, Hallucinations",6.00,SleepFast
+46,Tamsulosin,0.4mg,Prostate Enlargement,Silodosin,Yes,1 capsule after dinner,Dizziness,8.00,ProstateCare
+47,Sachet,1g,Probiotic,Yogurt,Yes,1 sachet daily,Bloating,2.00,GutHealth
+48,Calcium+D3,500mg,Bone Health,Milk,Yes,1 tablet daily,Constipation,3.00,BoneStrong
+49,Iron Folic,100mg,Anemia,Spinach,Yes,1 tablet daily,"Black stools, Constipation",2.50,IronUp
+50,Multivitamin,1 tab,General Health,Fruits,Yes,1 tablet daily,None,4.00,DailyVits
