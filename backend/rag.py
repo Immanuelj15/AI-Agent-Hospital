@@ -1,0 +1,251 @@
+# backend/rag.py
+import os
+import shutil
+import pandas as pd
+try:
+    __import__('pysqlite3')
+    import sys
+    sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
+except ImportError:
+    pass
+
+from langchain_chroma import Chroma
+from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_community.chat_models import ChatOllama
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.documents import Document
+from backend.db import get_db_connection
+
+CHROMA_PATH = os.path.join("backend", "chroma_store")
+MODEL_NAME = "mistral"
+EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+
+# ICMR-style Mock Clinical Treatment Guidelines
+CLINICAL_GUIDELINES = [
+    {
+        "title": "Antibiotic Stewardship and Bacterial Infection Guidelines",
+        "content": "ICMR Guidelines for Antibiotic Use: Antibiotics (e.g., Amoxicillin, Ibupromycin, Dextrophen) are strictly indicated for bacterial infections. Use in viral infections is inappropriate and contributes to antimicrobial resistance. Dosage forms include Tablets, Capsules, and Injections. Side effects commonly involve GI distress (diarrhea, cramping, nausea). For out-of-stock antibiotics, pharmacists must recommend equivalent class alternatives from available stock."
+    },
+    {
+        "title": "Antiviral Therapy for Viral Outbreaks",
+        "content": "ICMR Guidelines for Antiviral Stewardship: Antiviral medications (e.g., Ibuprocillin, Metovir, Acetomycin) are deployed for active viral replica control. Treatment should begin within 48 hours of symptom onset. Regular monitoring of liver and renal function is advised for prolonged treatments. Side effects include headache, fatigue, and muscle pain. Keep patient hydrated."
+    },
+    {
+        "title": "Management of Type 2 Diabetes",
+        "content": "Clinical Registry Guidelines for Antidiabetic Agents: For Type 2 Diabetes management, antidiabetic drugs (e.g., Acetocillin, Dextrocillin, Claricillin) are first-line therapies alongside lifestyle modifications. Regular monitoring of HbA1c and daily blood glucose tracking is critical. Common side effects include hypoglycemia, abdominal discomfort, and metallic taste. Alternatives should be recommended if patient experiences severe GI intolerance."
+    },
+    {
+        "title": "Fungal Infection Treatment Protocols",
+        "content": "Guidelines for Antifungal Care: Fungal infections (e.g., Clarinazole, Acetonazole, Cefmet) are treated with topical creams, ointments, or systemic tablets/syrups. Course completion is vital to prevent recurrence. Side effects include localized skin irritation, itching, or redness. Oral antifungals require hepatic enzyme tracking in chronic usage."
+    },
+    {
+        "title": "Fever Management & Antipyretic Safety",
+        "content": "Fever and Antipyretic Usage Guidelines: Antipyretics (e.g., Cefcillin, Metovir, Cefstatin) are indicated for symptomatic reduction of elevated body temperature. Daily limits must not be exceeded to prevent hepatotoxicity. Ensure adequate hydration and look for alternative indications (e.g., infection) if fever persists beyond 3 days."
+    },
+    {
+        "title": "Analgesic Pain Management",
+        "content": "Pain and Inflammation Management: Analgesics (e.g., Acetomycin, Ibupronazole, Metocillin) are used for acute or chronic pain relief. Over-the-counter NSAIDs carry risk of gastric ulcers and cardiovascular events with long-term high-dose use. Common side effects include stomach pain, heartburn, and dizziness. Alternatives must be checked for allergy compatibility."
+    },
+    {
+        "title": "Depression and Mood Disorder Treatments",
+        "content": "Depressive Disorder Guidelines: Antidepressant classes (e.g., Ibuprovir, Cefmet, Clariprofen) require strict compliance and continuous psychiatric follow-up. Therapeutic effects may take 2-4 weeks to manifest. Side effects include drowsiness, dry mouth, sleep cycle shifts, and weight changes. Discontinuation must be tapered under clinical supervision."
+    },
+    {
+        "title": "Wound Care and Antiseptic Protocols",
+        "content": "Wound Management and Antiseptics: Localized wounds are cleaned with antiseptics (e.g., Metoprofen, Metophen, Ibuprostatin) in cream, ointment, or tablet forms to prevent secondary bacterial infection. Check classification (Prescription vs OTC) before dispensing. Side effects are minor, mostly localized dryness or hypersensitivity."
+    }
+]
+
+def build_vectorstore(persist_dir=CHROMA_PATH):
+    """Builds the ChromaDB vector store containing medical research guidelines."""
+    print("Loading Clinical Guidelines...")
+    docs = []
+    for g in CLINICAL_GUIDELINES:
+        content = f"Title: {g['title']}\nContent: {g['content']}\n"
+        metadata = {"title": g['title']}
+        docs.append(Document(page_content=content, metadata=metadata))
+        
+    # Clean up existing vector database directory
+    if os.path.exists(persist_dir):
+        print(f"Clearing existing vector store at {persist_dir}...")
+        try:
+            shutil.rmtree(persist_dir)
+        except Exception as e:
+            print(f"Warning: Could not fully delete directory: {e}")
+            
+    print(f"Creating Vector Store using {EMBEDDING_MODEL} embeddings...")
+    embeddings = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)
+    
+    vectordb = Chroma.from_documents(
+        documents=docs, 
+        embedding=embeddings, 
+        persist_directory=persist_dir
+    )
+    print("Guidelines Vector Store successfully built.")
+    return vectordb
+
+def extract_entities_and_query_db(standalone_query):
+    """
+    Parses the search query to extract categories, indications, or names, 
+    and returns matching entries from the SQL database to append to context.
+    """
+    clean_q = standalone_query.lower()
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    # 1. Fetch categories, indications, and sample names present in DB
+    cursor.execute("SELECT DISTINCT category FROM medicines")
+    categories = [r[0] for r in cursor.fetchall()]
+    
+    cursor.execute("SELECT DISTINCT indication FROM medicines")
+    indications = [r[0] for r in cursor.fetchall()]
+    
+    matched_category = None
+    matched_indication = None
+    
+    # Check if category or indication is mentioned
+    for cat in categories:
+        if cat.lower() in clean_q:
+            matched_category = cat
+            break
+            
+    for ind in indications:
+        if ind.lower() in clean_q:
+            matched_indication = ind
+            break
+            
+    # Search SQLite matching the parsed criteria
+    db_context = ""
+    if matched_category or matched_indication:
+        sql = "SELECT * FROM medicines WHERE 1=1"
+        params = []
+        if matched_category:
+            sql += " AND category = ?"
+            params.append(matched_category)
+        if matched_indication:
+            sql += " AND indication = ?"
+            params.append(matched_indication)
+            
+        sql += " LIMIT 5"
+        cursor.execute(sql, params)
+        rows = cursor.fetchall()
+        
+        if rows:
+            db_context += "\n--- Real-time Medicine Stock Registry Matches ---\n"
+            for r in rows:
+                db_context += (
+                    f"Name: {r['name']} | Category: {r['category']} | Indication: {r['indication']} | "
+                    f"Strength: {r['strength']} | Form: {r['dosage_form']} | Stock: {r['stock']} | "
+                    f"Price: ${r['price']:.2f} | Manufacturer: {r['manufacturer']}\n"
+                )
+                
+    # 2. Check for exact medicine name lookup
+    # Split query into words to find names
+    words = [w.strip(',.?!"') for w in clean_q.split()]
+    placeholders = ",".join(["?"] * len(words))
+    
+    if words:
+        cursor.execute(
+            f"SELECT * FROM medicines WHERE LOWER(name) IN ({placeholders}) LIMIT 3", 
+            words
+        )
+        rows = cursor.fetchall()
+        if rows:
+            db_context += "\n--- Medicine Details ---\n"
+            for r in rows:
+                # Add details including dosage instructions and side effects
+                db_context += (
+                    f"Medicine: {r['name']} ({r['strength']})\n"
+                    f"- Category: {r['category']} | Indication: {r['indication']}\n"
+                    f"- Stock Status: {r['stock']}\n"
+                    f"- Price: ${r['price']:.2f} | Manufacturer: {r['manufacturer']}\n"
+                    f"- Classification: {r['classification']}\n"
+                    f"- Dosage: {r['dosage_instruction']}\n"
+                    f"- Side Effects: {r['side_effects']}\n"
+                )
+                if r['stock'] == 'No':
+                    # Find alternative in same category that is in stock
+                    cursor.execute(
+                        "SELECT name, price FROM medicines WHERE category = ? AND stock = 'Yes' LIMIT 1",
+                        (r['category'],)
+                    )
+                    alt = cursor.fetchone()
+                    alt_name = alt['name'] if alt else "Generic Substitute"
+                    db_context += f"- Recommended Available Alternative: {alt_name}\n"
+                db_context += "\n"
+                
+    conn.close()
+    return db_context
+
+def stream_rag_response(question, chat_history):
+    """Generates a streamed clinical RAG response combining guidelines and SQL data."""
+    llm = ChatOllama(model=MODEL_NAME, temperature=0.1)
+    
+    # 1. Contextualize user question if history exists
+    standalone_question = question
+    if chat_history:
+        contextualize_q_system_prompt = (
+            "You are an assistant that reformulates user questions.\n"
+            "Given a chat history and the latest user question which might reference pronouns or context in the chat history, "
+            "formulate a standalone question that can be understood without the chat history.\n"
+            "CRITICAL RULES:\n"
+            "1. Do NOT answer the question.\n"
+            "2. Do NOT add any introductory, conversational, or explanatory text (e.g., do NOT say 'Here is the standalone question:', 'Sure, here it is', etc.).\n"
+            "3. Output ONLY the reformulated question and nothing else."
+        )
+        contextualize_q_prompt = ChatPromptTemplate.from_messages([
+            ("system", contextualize_q_system_prompt),
+            # Few-shot examples
+            ("human", "Do you have Acetocillin?"),
+            ("ai", "No, Acetocillin is out of stock. We suggest Metformin as an alternative."),
+            ("human", "What is its price?"),
+            ("ai", "What is the price of Metformin?"),
+            MessagesPlaceholder(variable_name="chat_history"),
+            ("human", "{question}"),
+        ])
+        contextualizer = contextualize_q_prompt | llm | StrOutputParser()
+        standalone_question = contextualizer.invoke({"question": question, "chat_history": chat_history})
+        standalone_question = standalone_question.strip().strip('"').strip("'")
+        print(f"Contextualized Query: {standalone_question}")
+        
+    # 2. Retrieve Guidelines from ChromaDB
+    embeddings = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)
+    vectordb = Chroma(persist_directory=CHROMA_PATH, embedding_function=embeddings)
+    retriever = vectordb.as_retriever(search_kwargs={"k": 2})
+    guideline_docs = retriever.invoke(standalone_question)
+    guideline_context = "\n".join(doc.page_content for doc in guideline_docs)
+    
+    # 3. Retrieve Live Database Matches
+    db_context = extract_entities_and_query_db(standalone_question)
+    
+    # Merge context
+    combined_context = f"=== CLINICAL RESEARCH GUIDELINES ===\n{guideline_context}\n{db_context}"
+    
+    # 4. Generate Answer via RAG Chain
+    system_prompt = """You are a senior clinical AI assistant for AyuReg Medical shop.
+    Use the following pieces of context (composed of medical guidelines and real-time database stock records) to answer the user's question.
+    
+    RULES:
+    1. If the user asks for a medicine, look up its stock status in the provided stock registry or medicine details.
+    2. If out of stock, explicitly say it is OUT OF STOCK and recommend the listed 'Recommended Available Alternative' or suggest a medicine from the same Category that is in stock.
+    3. Include dosage instructions and side effects when relevant or requested.
+    4. Speak professionally, concisely, and cite the guidelines or stock records when answering.
+    5. If details are not in the context and cannot be found in the database, state: "I don't have clinical registry records for that query."
+
+    Context:
+    {context}"""
+    
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", system_prompt),
+        MessagesPlaceholder(variable_name="chat_history"),
+        ("human", "{question}"),
+    ])
+    
+    chain = prompt | llm | StrOutputParser()
+    
+    return chain.stream({
+        "context": combined_context,
+        "chat_history": chat_history,
+        "question": standalone_question
+    })
