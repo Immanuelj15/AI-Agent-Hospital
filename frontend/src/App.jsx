@@ -1,4 +1,4 @@
-# frontend/src/App.jsx
+// frontend/src/App.jsx
 import React, { useState, useEffect, useRef } from 'react'
 
 function App() {
