@@ -1,0 +1,22 @@
+# .gitignore for AyuReg Project
+
+# Virtual Environment
+venv/
+.venv/
+env/
+
+# Python Cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Local Databases and Vector Indices (Should be built locally via /api/rebuild)
+backend/medicines.db
+backend/chroma_store/
+chroma_store/
+
+# OS/IDE Settings
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
