@@ -49,7 +49,7 @@ def get_side_effects(category):
         return "Mild nausea, headache, dry mouth"
 
 def rebuild_database():
-    """Parses medicine_dataset.csv and builds an indexed SQLite database."""
+    """Parses medicine_dataset.csv and builds an indexed SQLite database with FTS5 search."""
     print("Initializing SQLite Database...")
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     
@@ -63,7 +63,7 @@ def rebuild_database():
     conn = get_db_connection()
     cursor = conn.cursor()
     
-    # Create the schema
+    # 1. Create the structured schema
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS medicines (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -81,10 +81,45 @@ def rebuild_database():
     )
     """)
     
-    # Create indexes for fast search
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_name ON medicines(name)")
+    # Create indexes for fast metadata filtering
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_category ON medicines(category)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_classification ON medicines(classification)")
+    
+    # 2. Create the FTS5 Virtual Table for full-text search
+    cursor.execute("""
+    CREATE VIRTUAL TABLE IF NOT EXISTS medicines_fts USING fts5(
+        name, category, dosage_form, manufacturer, indication,
+        content='medicines',
+        content_rowid='id'
+    )
+    """)
+    
+    # Create triggers to keep the FTS5 table in sync with the medicines table
+    cursor.execute("""
+    CREATE TRIGGER IF NOT EXISTS medicines_ai AFTER INSERT ON medicines BEGIN
+        INSERT INTO medicines_fts(rowid, name, category, dosage_form, manufacturer, indication)
+        VALUES (new.id, new.name, new.category, new.dosage_form, new.manufacturer, new.indication);
+    END
+    """)
+    
+    cursor.execute("""
+    CREATE TRIGGER IF NOT EXISTS medicines_ad AFTER DELETE ON medicines BEGIN
+        DELETE FROM medicines_fts WHERE rowid = old.id;
+    END
+    """)
+    
+    cursor.execute("""
+    CREATE TRIGGER IF NOT EXISTS medicines_au AFTER UPDATE ON medicines BEGIN
+        UPDATE medicines_fts SET
+            name = new.name,
+            category = new.category,
+            dosage_form = new.dosage_form,
+            manufacturer = new.manufacturer,
+            indication = new.indication
+        WHERE rowid = old.id;
+    END
+    """)
+    
     conn.commit()
 
     if not os.path.exists(CSV_PATH):
@@ -93,12 +128,10 @@ def rebuild_database():
         return False
 
     print(f"Reading dataset from {CSV_PATH}...")
-    # Read CSV in chunks to handle memory safely
     chunksize = 10000
     total_loaded = 0
     
     for chunk in pd.read_csv(CSV_PATH, chunksize=chunksize):
-        # Rename columns to ensure consistency
         chunk.columns = [c.strip() for c in chunk.columns]
         
         batch = []
@@ -112,13 +145,11 @@ def rebuild_database():
             classification = str(row.get('Classification', 'Prescription'))
             
             # Enrich fields
-            # Generate deterministic mock values based on properties
             stock = "Yes" if (hash(name) % 5 != 0) else "No"  # 80% stock rate
             
-            # Derive price from strength numbers
             num_part = ''.join(filter(str.isdigit, strength))
             price_base = float(num_part) if num_part else 10.0
-            price = round(min(max(price_base * 0.05, 1.50), 150.0), 2)  # Cap price between $1.50 and $150
+            price = round(min(max(price_base * 0.05, 1.50), 150.0), 2)
             
             dosage_instruction = get_dosage_instruction(dosage_form)
             side_effects = get_side_effects(category)
@@ -138,52 +169,67 @@ def rebuild_database():
         total_loaded += len(batch)
         print(f"Loaded {total_loaded} records into SQLite database...")
         
+    # Rebuild FTS5 table index initially (in case triggers didn't run for batch load)
+    print("Rebuilding FTS5 Virtual Table index...")
+    cursor.execute("INSERT INTO medicines_fts(rowid, name, category, dosage_form, manufacturer, indication) SELECT id, name, category, dosage_form, manufacturer, indication FROM medicines")
+    conn.commit()
+    
     conn.close()
-    print("SQLite database successfully populated and indexed.")
+    print("SQLite database and FTS5 search index successfully populated.")
     return True
 
 def search_medicines(search_str=None, category=None, classification=None, page=1, limit=50):
-    """Executes a fast paginated, filtered SQL search on the database."""
+    """Executes a fast paginated, filtered SQL search on the database using SQLite FTS5."""
     conn = get_db_connection()
     cursor = conn.cursor()
     
-    query = "SELECT * FROM medicines WHERE 1=1"
-    count_query = "SELECT COUNT(*) FROM medicines WHERE 1=1"
     params = []
     
+    # If search string is provided, we join FTS5 virtual table
     if search_str:
-        # Match name, category, or manufacturer
-        query += " AND (name LIKE ? OR category LIKE ? OR manufacturer LIKE ?)"
-        count_query += " AND (name LIKE ? OR category LIKE ? OR manufacturer LIKE ?)"
-        like_param = f"%{search_str}%"
-        params.extend([like_param, like_param, like_param])
+        # Clean search term and convert to prefix matching format for each word
+        clean_search = "".join([c if c.isalnum() or c.isspace() else " " for c in search_str]).strip()
+        search_terms = " AND ".join([f"{w}*" for w in clean_search.split() if w])
         
+        if search_terms:
+            query = "SELECT m.* FROM medicines m JOIN medicines_fts f ON m.id = f.rowid WHERE medicines_fts MATCH ?"
+            count_query = "SELECT COUNT(*) FROM medicines m JOIN medicines_fts f ON m.id = f.rowid WHERE medicines_fts MATCH ?"
+            params.append(search_terms)
+        else:
+            query = "SELECT * FROM medicines WHERE 1=1"
+            count_query = "SELECT COUNT(*) FROM medicines WHERE 1=1"
+    else:
+        query = "SELECT * FROM medicines WHERE 1=1"
+        count_query = "SELECT COUNT(*) FROM medicines WHERE 1=1"
+        
+    # Apply category & classification filters
+    prefix = "m." if search_str else ""
+    
     if category:
-        query += " AND category = ?"
-        count_query += " AND category = ?"
+        query += f" AND {prefix}category = ?"
+        count_query += f" AND {prefix}category = ?"
         params.append(category)
         
     if classification:
-        query += " AND classification = ?"
-        count_query += " AND classification = ?"
+        query += f" AND {prefix}classification = ?"
+        count_query += f" AND {prefix}classification = ?"
         params.append(classification)
         
-    # Get total count first
+    # Get total count
     cursor.execute(count_query, params)
     total_count = cursor.fetchone()[0]
     
     # Add pagination
-    query += " ORDER BY id ASC LIMIT ? OFFSET ?"
+    query += f" ORDER BY {prefix}id ASC LIMIT ? OFFSET ?"
     offset = (page - 1) * limit
     params_with_paging = params + [limit, offset]
     
     cursor.execute(query, params_with_paging)
     rows = cursor.fetchall()
     
-    # Convert Row objects to dicts
     medicines = [dict(row) for row in rows]
     
-    # For out-of-stock items, dynamically suggest alternatives in same category
+    # Append alternatives dynamically
     for med in medicines:
         if med['stock'] == 'No':
             cursor.execute(
@@ -203,7 +249,6 @@ def get_stats():
     conn = get_db_connection()
     cursor = conn.cursor()
     
-    # 1. Total Medicines
     cursor.execute("SELECT COUNT(*) FROM medicines")
     total_count = cursor.fetchone()[0]
     
@@ -211,15 +256,12 @@ def get_stats():
         conn.close()
         return {"total": 0, "categories": [], "classifications": {}, "manufacturers": []}
         
-    # 2. Classification Split
     cursor.execute("SELECT classification, COUNT(*) FROM medicines GROUP BY classification")
     classifications = {row[0]: row[1] for row in cursor.fetchall()}
     
-    # 3. Top Categories
     cursor.execute("SELECT category, COUNT(*) as count FROM medicines GROUP BY category ORDER BY count DESC LIMIT 5")
     categories = [{"category": row[0], "count": row[1]} for row in cursor.fetchall()]
     
-    # 4. Top Manufacturers
     cursor.execute("SELECT manufacturer, COUNT(*) as count FROM medicines GROUP BY manufacturer ORDER BY count DESC LIMIT 5")
     manufacturers = [{"manufacturer": row[0], "count": row[1]} for row in cursor.fetchall()]
     
@@ -234,7 +276,7 @@ def get_stats():
 if __name__ == "__main__":
     rebuild_database()
     print("Testing search...")
-    res, count = search_medicines(search_str="Amoxicillin", limit=5)
-    print(f"Found {count} matches:")
+    res, count = search_medicines(search_str="Roche Antidiabetic", limit=5)
+    print(f"Found {count} FTS matches:")
     for r in res:
-        print(f"Name: {r['name']}, Category: {r['category']}, Form: {r['dosage_form']}, Stock: {r['stock']}, Alt: {r['alternative']}")
+        print(f"Name: {r['name']}, Category: {r['category']}, Manufacturer: {r['manufacturer']}, Stock: {r['stock']}, Alt: {r['alternative']}")

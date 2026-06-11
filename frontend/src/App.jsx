@@ -4,6 +4,9 @@ import React, { useState, useEffect, useRef } from 'react'
 function App() {
   const [activeTab, setActiveTab] = useState('dashboard')
 
+  // --- Role / Authentication States ---
+  const [userRole, setUserRole] = useState('clerk') // 'clerk' or 'doctor'
+
   // --- Dashboard States ---
   const [stats, setStats] = useState(null)
   const [loadingStats, setLoadingStats] = useState(false)
@@ -34,6 +37,10 @@ function App() {
     { title: "Fungal Infection Treatments", prompt: "How are localized fungal infections managed?" },
     { title: "Fever Management Limits", prompt: "What are the recommended guidelines for antipyretic administration?" }
   ]
+
+  // --- Guidelines Uploader States ---
+  const [uploading, setUploading] = useState(false)
+  const [uploadStatus, setUploadStatus] = useState('')
 
   // --- Global Rebuild State ---
   const [rebuilding, setRebuilding] = useState(false)
@@ -115,6 +122,38 @@ function App() {
     }
   }
 
+  // File Upload Handler
+  const handleFileUpload = async (e) => {
+    const file = e.target.files[0]
+    if (!file) return
+
+    setUploading(true)
+    setUploadStatus('Uploading...')
+    const formData = new FormData()
+    formData.append('file', file)
+
+    try {
+      const res = await fetch('http://localhost:8000/api/upload', {
+        method: 'POST',
+        body: formData
+      })
+      const data = await res.json()
+      if (res.ok) {
+        setUploadStatus('Success!')
+        alert(`Guidelines file "${file.name}" successfully parsed and indexed!`)
+        // Add system message to chat
+        setMessages(prev => [...prev, { role: 'system', content: `Indexed clinical guidelines from file: ${file.name}` }])
+      } else {
+        setUploadStatus(`Error: ${data.detail}`)
+      }
+    } catch (err) {
+      setUploadStatus('Upload Failed')
+      console.error(err)
+    } finally {
+      setUploading(false)
+    }
+  }
+
   // Conversational Streaming RAG Chat
   const handleSendMessage = async (e, customPrompt = null) => {
     e?.preventDefault()
@@ -137,7 +176,8 @@ function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           question: promptToSend,
-          chat_history: updatedMessages.slice(0, -1) // Exclude current question
+          chat_history: updatedMessages.slice(0, -1), // Exclude current question
+          role: userRole
         })
       })
 
@@ -192,6 +232,42 @@ function App() {
           <div style={{ color: 'var(--text)', fontSize: '0.8rem', marginLeft: '0.5rem', border: '1px solid var(--border)', padding: '2px 8px', borderRadius: '4px' }}>ICMR Portal</div>
         </div>
         
+        {/* Role Toggle switches in Nav */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', border: '1px solid var(--border)', padding: '3px', borderRadius: '24px', backgroundColor: '#f1f5f9' }}>
+          <button 
+            className="btn" 
+            onClick={() => setUserRole('clerk')}
+            style={{ 
+              borderRadius: '20px', 
+              fontSize: '0.78rem', 
+              padding: '0.3rem 0.8rem', 
+              backgroundColor: userRole === 'clerk' ? '#fff' : 'transparent',
+              color: userRole === 'clerk' ? 'var(--text-heading)' : 'var(--text)',
+              border: 'none',
+              boxShadow: userRole === 'clerk' ? 'var(--shadow-sm)' : 'none',
+              fontWeight: userRole === 'clerk' ? '700' : '500'
+            }}
+          >
+            🔑 Clerk Mode
+          </button>
+          <button 
+            className="btn" 
+            onClick={() => setUserRole('doctor')}
+            style={{ 
+              borderRadius: '20px', 
+              fontSize: '0.78rem', 
+              padding: '0.3rem 0.8rem', 
+              backgroundColor: userRole === 'doctor' ? '#fff' : 'transparent',
+              color: userRole === 'doctor' ? 'var(--text-heading)' : 'var(--text)',
+              border: 'none',
+              boxShadow: userRole === 'doctor' ? 'var(--shadow-sm)' : 'none',
+              fontWeight: userRole === 'doctor' ? '700' : '500'
+            }}
+          >
+            🩺 Doctor (MD) Mode
+          </button>
+        </div>
+
         <nav className="nav-tabs">
           <button 
             className={`nav-tab ${activeTab === 'dashboard' ? 'active' : ''}`}
@@ -254,8 +330,8 @@ function App() {
               </div>
               <div className="stat-card">
                 <div className="stat-header">Guidelines Indexed</div>
-                <div className="stat-value" style={{ color: 'var(--primary)' }}>8</div>
-                <div className="stat-desc">ICMR Treatment Protocols</div>
+                <div className="stat-value" style={{ color: 'var(--primary)' }}>{messages.filter(m => m.role === 'system').length + 8}</div>
+                <div className="stat-desc">Treatment Guidelines</div>
               </div>
             </div>
 
@@ -313,7 +389,7 @@ function App() {
                 <input 
                   type="text" 
                   className="search-input"
-                  placeholder="Search by Medicine Name, Category, or Manufacturer..."
+                  placeholder="FTS5 Search: e.g. 'Roche Antidiabetic' or 'Amoxicillin Tablet'..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && fetchMedicines(true)}
@@ -347,7 +423,7 @@ function App() {
               </select>
 
               <button className="btn btn-primary" onClick={() => fetchMedicines(true)}>
-                Apply Search
+                Apply FTS Search
               </button>
               <button 
                 className="btn btn-outline"
@@ -356,7 +432,6 @@ function App() {
                   setCategory('')
                   setClassification('')
                   setPage(1)
-                  // Fetch with reset
                   setTimeout(() => fetchMedicines(true), 50)
                 }}
               >
@@ -391,7 +466,9 @@ function App() {
                             style={{ cursor: 'pointer', backgroundColor: expandedMedicine === m.id ? '#f0f9ff' : 'transparent' }}
                           >
                             <td>#{m.id}</td>
-                            <td style={{ fontWeight: '600', color: 'var(--text-heading)' }}>{m.name}</td>
+                            <td style={{ fontWeight: '600', color: 'var(--text-heading)' }}>
+                              {m.classification === 'Prescription' ? '🔒 ' : ''}{m.name}
+                            </td>
                             <td>{m.category}</td>
                             <td>{m.dosage_form}</td>
                             <td>{m.strength}</td>
@@ -411,28 +488,49 @@ function App() {
                           {expandedMedicine === m.id && (
                             <tr>
                               <td colSpan="9" style={{ backgroundColor: 'var(--primary-light)', padding: '1.5rem', borderBottom: '1px solid var(--border)' }}>
-                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1.5rem', textAlign: 'left' }}>
-                                  <div>
-                                    <h4 style={{ margin: '0 0 0.5rem 0', color: 'var(--text-heading)' }}>📋 Clinical Indication</h4>
-                                    <p style={{ fontSize: '0.9rem' }}>Indicated for treatment and relief in: <strong>{m.indication}</strong></p>
-                                    
-                                    <h4 style={{ margin: '1rem 0 0.5rem 0', color: 'var(--text-heading)' }}>💊 Dosage Instructions</h4>
-                                    <p style={{ fontSize: '0.9rem', color: 'var(--text-heading)' }}>{m.dosage_instruction}</p>
-                                  </div>
-                                  <div>
-                                    <h4 style={{ margin: '0 0 0.5rem 0', color: 'var(--text-heading)' }}>⚠️ Potential Side Effects</h4>
-                                    <p style={{ fontSize: '0.9rem', color: 'var(--danger)' }}>{m.side_effects}</p>
-                                    
-                                    <h4 style={{ margin: '1rem 0 0.5rem 0', color: 'var(--text-heading)' }}>🔄 Recommended Alternative</h4>
-                                    <p style={{ fontSize: '0.9rem' }}>
-                                      {m.stock === 'No' ? (
-                                        <span>Substitute with: <strong style={{ color: 'var(--success)' }}>{m.alternative}</strong> (Available in stock)</span>
-                                      ) : (
-                                        <span style={{ color: 'var(--text)' }}>Primary medication in stock. No alternative required.</span>
-                                      )}
+                                {/* RBAC Lock for Clerk role querying Prescription drug */}
+                                {userRole === 'clerk' && m.classification === 'Prescription' ? (
+                                  <div style={{ backgroundColor: '#fff5f5', border: '1px solid #fee2e2', padding: '1.5rem', borderRadius: '8px', color: 'var(--danger)', textAlign: 'center' }}>
+                                    <h4 style={{ margin: '0 0 0.5rem 0' }}>⚠️ Access Locked (Prescription Rx Medicine)</h4>
+                                    <p style={{ fontSize: '0.9rem', color: '#7f1d1d', maxWidth: '600px', margin: '0 auto' }}>
+                                      Dispensation and detailed review for <strong>{m.name}</strong> are restricted to doctors. 
+                                      Please switch to <strong>Doctor (MD) Mode</strong> in the header tab to unlock, or request clinician authorization.
                                     </p>
                                   </div>
-                                </div>
+                                ) : (
+                                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1.5rem', textAlign: 'left' }}>
+                                    <div>
+                                      <h4 style={{ margin: '0 0 0.5rem 0', color: 'var(--text-heading)' }}>📋 Clinical Indication</h4>
+                                      <p style={{ fontSize: '0.9rem' }}>Indicated for treatment and relief in: <strong>{m.indication}</strong></p>
+                                      
+                                      <h4 style={{ margin: '1rem 0 0.5rem 0', color: 'var(--text-heading)' }}>💊 Dosage Instructions</h4>
+                                      <p style={{ fontSize: '0.9rem', color: 'var(--text-heading)' }}>{m.dosage_instruction}</p>
+                                      
+                                      {userRole === 'doctor' && m.classification === 'Prescription' && (
+                                        <button 
+                                          className="btn btn-primary" 
+                                          onClick={() => alert(`✓ Prescription for ${m.name} successfully authorized and logged in clinician registry.`)}
+                                          style={{ marginTop: '1rem', width: 'auto', padding: '0.5rem 1rem', fontSize: '0.85rem' }}
+                                        >
+                                          ✓ Dispense & Authorize Rx
+                                        </button>
+                                      )}
+                                    </div>
+                                    <div>
+                                      <h4 style={{ margin: '0 0 0.5rem 0', color: 'var(--text-heading)' }}>⚠️ Potential Side Effects</h4>
+                                      <p style={{ fontSize: '0.9rem', color: 'var(--danger)' }}>{m.side_effects}</p>
+                                      
+                                      <h4 style={{ margin: '1rem 0 0.5rem 0', color: 'var(--text-heading)' }}>🔄 Recommended Alternative</h4>
+                                      <p style={{ fontSize: '0.9rem' }}>
+                                        {m.stock === 'No' ? (
+                                          <span>Substitute with: <strong style={{ color: 'var(--success)' }}>{m.alternative}</strong> (Available in stock)</span>
+                                        ) : (
+                                          <span style={{ color: 'var(--text)' }}>Primary medication in stock. No alternative required.</span>
+                                        )}
+                                      </p>
+                                    </div>
+                                  </div>
+                                )}
                               </td>
                             </tr>
                           )}
@@ -480,15 +578,15 @@ function App() {
         {activeTab === 'chat' && (
           <div className="chat-container-layout">
             
-            {/* Guidelines Sidebar */}
+            {/* Guidelines Sidebar with PDF/TXT uploader */}
             <aside className="chat-guidelines">
               <h3 style={{ margin: '0 0 1rem 0', fontSize: '1rem', color: 'var(--text-heading)', borderBottom: '1px solid var(--border)', paddingBottom: '0.5rem' }}>
-                📖 ICMR Guidelines Quick Access
+                📖 ICMR Guidelines
               </h3>
               <p style={{ fontSize: '0.8rem', color: 'var(--text)', marginBottom: '0.5rem' }}>
                 Select a topic to automatically prompt the Clinical RAG assistant:
               </p>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                 {guidelines.map((g, i) => (
                   <div 
                     key={i} 
@@ -500,14 +598,50 @@ function App() {
                   </div>
                 ))}
               </div>
+
+              {/* Dynamic Guidelines File Uploader Widget */}
+              <div style={{ border: '2px dashed var(--border)', padding: '1rem', borderRadius: '8px', textAlign: 'center', marginTop: '1.5rem', backgroundColor: '#f8fafc' }}>
+                <h4 style={{ margin: '0 0 0.5rem 0', fontSize: '0.85rem', color: 'var(--text-heading)' }}>📤 Add Guidelines</h4>
+                <p style={{ fontSize: '0.72rem', color: 'var(--text)', marginBottom: '0.75rem' }}>Upload clinical PDF or TXT to expand vector database</p>
+                <input 
+                  type="file" 
+                  accept=".pdf,.txt" 
+                  id="guideline-file"
+                  onChange={handleFileUpload}
+                  style={{ display: 'none' }}
+                  disabled={uploading}
+                />
+                <label 
+                  htmlFor="guideline-file" 
+                  className="btn btn-outline" 
+                  style={{ display: 'inline-block', fontSize: '0.75rem', padding: '0.4rem 0.8rem', cursor: 'pointer', opacity: uploading ? 0.6 : 1 }}
+                >
+                  {uploading ? 'Processing...' : 'Choose File'}
+                </label>
+                {uploadStatus && (
+                  <div 
+                    style={{ 
+                      fontSize: '0.72rem', 
+                      marginTop: '0.5rem', 
+                      color: uploadStatus.includes('Success') ? 'var(--success)' : uploadStatus.includes('Uploading') ? 'var(--primary)' : 'var(--danger)' 
+                    }}
+                  >
+                    {uploadStatus}
+                  </div>
+                )}
+              </div>
             </aside>
 
             {/* Main Chat Panel */}
             <section className="chat-main">
               <div className="chat-header">
                 <div>
-                  <h3 style={{ margin: 0, fontSize: '1.1rem', color: 'var(--text-heading)' }}>💬 Clinical RAG Assistant</h3>
-                  <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text)' }}>Powered by SQLite Index & Guidelines ChromaDB</p>
+                  <h3 style={{ margin: 0, fontSize: '1.1rem', color: 'var(--text-heading)' }}>
+                    💬 Clinical RAG Assistant <span style={{ fontSize: '0.8rem', verticalAlign: 'middle', border: '1px solid var(--border)', padding: '2px 8px', borderRadius: '12px', marginLeft: '0.5rem', backgroundColor: userRole === 'doctor' ? 'var(--primary-light)' : 'transparent', color: userRole === 'doctor' ? 'var(--primary)' : 'var(--text)' }}>
+                      {userRole === 'doctor' ? 'Doctor View' : 'Clerk View'}
+                    </span>
+                  </h3>
+                  <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text)' }}>Powered by SQLite FTS5 & ChromaDB</p>
                 </div>
                 <button 
                   className="btn btn-outline" 
@@ -528,7 +662,6 @@ function App() {
                       m.role === 'system' ? 'chat-bubble-system' : 'chat-bubble-assistant'
                     }`}
                   >
-                    {/* Render basic custom line breaks & markdown list styling */}
                     {m.content.split('\n').map((line, i) => {
                       if (line.trim().startsWith('- ')) {
                         return <li key={i} style={{ marginLeft: '1rem', marginBottom: '0.2rem' }}>{line.trim().substring(2)}</li>
@@ -540,7 +673,7 @@ function App() {
                         return <h4 key={i} style={{ margin: '0.5rem 0 0.25rem 0', fontWeight: 'bold' }}>{line.trim().substring(3)}</h4>
                       }
                       if (line.trim().startsWith('===')) {
-                        return null; // Skip raw RAG section headers
+                        return null;
                       }
                       return <p key={i} style={{ margin: '0 0 0.5rem 0' }}>{line}</p>
                     })}
@@ -563,7 +696,11 @@ function App() {
                 <input 
                   type="text" 
                   className="chat-text-input"
-                  placeholder="Ask a clinical question (e.g. 'Do you have Acetocillin?' or 'guidelines for diabetes')..."
+                  placeholder={
+                    userRole === 'doctor' 
+                      ? "Ask clinical guidelines, authorize Rx drugs, check stock..." 
+                      : "Search stock, dosage details, check alternatives (Rx access restricted)..."
+                  }
                   value={chatInput}
                   onChange={(e) => setChatInput(e.target.value)}
                   disabled={isGenerating}

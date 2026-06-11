@@ -1,13 +1,15 @@
 # backend/main.py
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import List, Dict, Optional
 from backend.db import search_medicines, get_stats, rebuild_database
-from backend.rag import stream_rag_response, build_vectorstore
+from backend.rag import stream_rag_response, build_vectorstore, add_document_to_vectorstore
 from langchain_core.messages import HumanMessage, AIMessage
 import asyncio
+import pypdf
+import io
 
 app = FastAPI(title="AyuReg API", description="FastAPI Backend for AyuReg Medical Assistant")
 
@@ -27,6 +29,7 @@ class ChatMessage(BaseModel):
 class ChatPayload(BaseModel):
     question: str
     chat_history: List[ChatMessage]
+    role: Optional[str] = "clerk"  # Default role if not provided
 
 @app.get("/api/stats")
 def api_get_stats():
@@ -74,15 +77,22 @@ async def api_post_chat(payload: ChatPayload):
         elif msg.role == "assistant":
             langchain_history.append(AIMessage(content=msg.content))
             
+    # Tailor the system prompt parameters by injecting the user role
+    role_instruction = f"The user is logged in as a: {payload.role.upper()}."
+    if payload.role == "clerk":
+        role_instruction += " Clerks cannot dispense Prescription-only (Rx) drugs without doctor signatures."
+        
     try:
+        # Add a custom system message to start the stream or inject it into the prompt
+        # We can append role details to the question or context. For simplicity, we append it to the question:
+        modified_question = f"[{role_instruction}] {payload.question}"
+        
         # Get generator response stream
-        token_stream = stream_rag_response(payload.question, langchain_history)
+        token_stream = stream_rag_response(modified_question, langchain_history)
         
         async def event_generator():
-            # Iterate over the sync generator in a thread-safe way
             for token in token_stream:
                 yield token
-                # Yield control to allow async tasks to run
                 await asyncio.sleep(0.01)
                 
         return StreamingResponse(event_generator(), media_type="text/plain")
@@ -91,6 +101,40 @@ async def api_post_chat(payload: ChatPayload):
         if "Connection refused" in error_msg or "Failed to establish a new connection" in error_msg:
             raise HTTPException(status_code=503, detail="Could not connect to Ollama. Please ensure 'ollama serve' is running.")
         raise HTTPException(status_code=500, detail=f"RAG processing failed: {error_msg}")
+
+@app.post("/api/upload")
+async def api_upload_guideline(file: UploadFile = File(...)):
+    """Receives a clinical guideline file (PDF or TXT) and indexes it in the guidelines ChromaDB."""
+    filename = file.filename
+    
+    if not (filename.endswith(".pdf") or filename.endswith(".txt")):
+        raise HTTPException(status_code=400, detail="Only PDF and TXT files are supported.")
+        
+    try:
+        contents = await file.read()
+        text = ""
+        
+        if filename.endswith(".pdf"):
+            pdf_file = io.BytesIO(contents)
+            reader = pypdf.PdfReader(pdf_file)
+            for page_num in range(len(reader.pages)):
+                page = reader.pages[page_num]
+                page_text = page.extract_text()
+                if page_text:
+                    text += page_text + "\n"
+        else:
+            text = contents.decode("utf-8")
+            
+        if not text.strip():
+            raise HTTPException(status_code=400, detail="The uploaded file contains no readable text.")
+            
+        success = add_document_to_vectorstore(text, filename)
+        if not success:
+            raise Exception("ChromaDB indexing failed.")
+            
+        return {"status": "success", "message": f"Successfully parsed and indexed guidelines from '{filename}'."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"File upload failed: {str(e)}")
 
 @app.post("/api/rebuild")
 def api_rebuild():

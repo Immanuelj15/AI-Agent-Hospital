@@ -85,6 +85,22 @@ def build_vectorstore(persist_dir=CHROMA_PATH):
     print("Guidelines Vector Store successfully built.")
     return vectordb
 
+def add_document_to_vectorstore(text, title, persist_dir=CHROMA_PATH):
+    """Splits text and adds the documents to the guidelines vector store."""
+    if not text.strip():
+        return False
+        
+    print(f"Adding clinical guideline: '{title}' to vector store...")
+    text_splitter = CharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
+    docs = [Document(page_content=f"Title: {title}\nContent: {text}\n", metadata={"title": title})]
+    split_docs = text_splitter.split_documents(docs)
+    
+    embeddings = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)
+    vectordb = Chroma(persist_directory=persist_dir, embedding_function=embeddings)
+    vectordb.add_documents(split_docs)
+    print("Guidelines vector store successfully updated.")
+    return True
+
 def extract_entities_and_query_db(standalone_query):
     """
     Parses the search query to extract categories, indications, or names, 
