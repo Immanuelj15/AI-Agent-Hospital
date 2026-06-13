@@ -77,18 +77,9 @@ async def api_post_chat(payload: ChatPayload):
         elif msg.role == "assistant":
             langchain_history.append(AIMessage(content=msg.content))
             
-    # Tailor the system prompt parameters by injecting the user role
-    role_instruction = f"The user is logged in as a: {payload.role.upper()}."
-    if payload.role == "clerk":
-        role_instruction += " Clerks cannot dispense Prescription-only (Rx) drugs without doctor signatures."
-        
     try:
-        # Add a custom system message to start the stream or inject it into the prompt
-        # We can append role details to the question or context. For simplicity, we append it to the question:
-        modified_question = f"[{role_instruction}] {payload.question}"
-        
-        # Get generator response stream
-        token_stream = stream_rag_response(modified_question, langchain_history)
+        # Get generator response stream, passing the user role directly
+        token_stream = stream_rag_response(payload.question, langchain_history, role=payload.role)
         
         async def event_generator():
             for token in token_stream:

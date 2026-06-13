@@ -104,79 +104,42 @@ def add_document_to_vectorstore(text, title, persist_dir=CHROMA_PATH):
 
 def extract_entities_and_query_db(standalone_query):
     """
-    Parses the search query to extract categories, indications, or names, 
-    and returns matching entries from the SQL database to append to context.
+    Queries the SQLite database using FTS5 for any matching medicines, categories, 
+    or indications in the query to provide real-time stock details for RAG.
     """
-    clean_q = standalone_query.lower()
+    # Clean the query for FTS5 matching
+    clean_search = "".join([c if c.isalnum() or c.isspace() else " " for c in standalone_query]).strip()
+    
+    # Exclude common stopwords to prevent irrelevant high-frequency matching
+    stopwords = {"what", "is", "its", "the", "are", "you", "have", "for", "and", "can", "with", "this", "that", "from", "please", "show", "tell", "price", "stock", "dosage", "form", "manufacturer"}
+    words = [w for w in clean_search.lower().split() if w not in stopwords and len(w) > 2]
+    search_terms = " OR ".join([f"{w}*" for w in words])
+    
+    if not search_terms:
+        return ""
+        
+    db_context = ""
     conn = get_db_connection()
     cursor = conn.cursor()
     
-    # 1. Fetch categories, indications, and sample names present in DB
-    cursor.execute("SELECT DISTINCT category FROM medicines")
-    categories = [r[0] for r in cursor.fetchall()]
-    
-    cursor.execute("SELECT DISTINCT indication FROM medicines")
-    indications = [r[0] for r in cursor.fetchall()]
-    
-    matched_category = None
-    matched_indication = None
-    
-    # Check if category or indication is mentioned
-    for cat in categories:
-        if cat.lower() in clean_q:
-            matched_category = cat
-            break
-            
-    for ind in indications:
-        if ind.lower() in clean_q:
-            matched_indication = ind
-            break
-            
-    # Search SQLite matching the parsed criteria
-    db_context = ""
-    if matched_category or matched_indication:
-        sql = "SELECT * FROM medicines WHERE 1=1"
-        params = []
-        if matched_category:
-            sql += " AND category = ?"
-            params.append(matched_category)
-        if matched_indication:
-            sql += " AND indication = ?"
-            params.append(matched_indication)
-            
-        sql += " LIMIT 5"
-        cursor.execute(sql, params)
+    try:
+        # Search FTS5 for up to 5 matching medicines
+        sql = """
+        SELECT m.* FROM medicines m 
+        JOIN medicines_fts f ON m.id = f.rowid 
+        WHERE medicines_fts MATCH ? 
+        LIMIT 5
+        """
+        cursor.execute(sql, (search_terms,))
         rows = cursor.fetchall()
         
         if rows:
             db_context += "\n--- Real-time Medicine Stock Registry Matches ---\n"
             for r in rows:
                 db_context += (
-                    f"Name: {r['name']} | Category: {r['category']} | Indication: {r['indication']} | "
-                    f"Strength: {r['strength']} | Form: {r['dosage_form']} | Stock: {r['stock']} | "
-                    f"Price: ${r['price']:.2f} | Manufacturer: {r['manufacturer']}\n"
-                )
-                
-    # 2. Check for exact medicine name lookup
-    # Split query into words to find names
-    words = [w.strip(',.?!"') for w in clean_q.split()]
-    placeholders = ",".join(["?"] * len(words))
-    
-    if words:
-        cursor.execute(
-            f"SELECT * FROM medicines WHERE LOWER(name) IN ({placeholders}) LIMIT 3", 
-            words
-        )
-        rows = cursor.fetchall()
-        if rows:
-            db_context += "\n--- Medicine Details ---\n"
-            for r in rows:
-                # Add details including dosage instructions and side effects
-                db_context += (
                     f"Medicine: {r['name']} ({r['strength']})\n"
                     f"- Category: {r['category']} | Indication: {r['indication']}\n"
-                    f"- Stock Status: {r['stock']}\n"
-                    f"- Price: ${r['price']:.2f} | Manufacturer: {r['manufacturer']}\n"
+                    f"- Stock Status: {r['stock']} | Price: ${r['price']:.2f} | Manufacturer: {r['manufacturer']}\n"
                     f"- Classification: {r['classification']}\n"
                     f"- Dosage: {r['dosage_instruction']}\n"
                     f"- Side Effects: {r['side_effects']}\n"
@@ -191,11 +154,14 @@ def extract_entities_and_query_db(standalone_query):
                     alt_name = alt['name'] if alt else "Generic Substitute"
                     db_context += f"- Recommended Available Alternative: {alt_name}\n"
                 db_context += "\n"
-                
-    conn.close()
+    except Exception as e:
+        print(f"Database query error during RAG: {e}")
+    finally:
+        conn.close()
+        
     return db_context
 
-def stream_rag_response(question, chat_history):
+def stream_rag_response(question, chat_history, role="clerk"):
     """Generates a streamed clinical RAG response combining guidelines and SQL data."""
     llm = ChatOllama(
         model=MODEL_NAME, 
@@ -243,8 +209,17 @@ def stream_rag_response(question, chat_history):
     # Merge context
     combined_context = f"=== CLINICAL RESEARCH GUIDELINES ===\n{guideline_context}\n{db_context}"
     
-    # 4. Generate Answer via RAG Chain
-    system_prompt = """You are a senior clinical AI assistant for AyuReg Medical shop.
+    # 4. Configure system instructions based on the active role
+    role_instruction = f"The user is logged in as a: {role.upper()}."
+    if role == "clerk":
+        role_instruction += " Restrict giving authorization details. Emphasize that Prescription-only (Rx) medications cannot be dispensed without doctor signature."
+    else:
+        role_instruction += " Full clinician access. You can guide them through prescribing and authorization steps."
+
+    # Generate Answer via RAG Chain
+    system_prompt = f"""You are a senior clinical AI assistant for AyuReg Medical shop.
+    {role_instruction}
+    
     Use the following pieces of context (composed of medical guidelines and real-time database stock records) to answer the user's question.
     
     RULES:
@@ -255,7 +230,7 @@ def stream_rag_response(question, chat_history):
     5. If details are not in the context and cannot be found in the database, state: "I don't have clinical registry records for that query."
 
     Context:
-    {context}"""
+    {{context}}"""
     
     prompt = ChatPromptTemplate.from_messages([
         ("system", system_prompt),
