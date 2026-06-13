@@ -504,6 +504,7 @@ function App() {
                                     <div>
                                       <h4 style={{ margin: '0 0 0.5rem 0', color: 'var(--text-heading)' }}>📋 Clinical Indication</h4>
                                       <p style={{ fontSize: '0.9rem' }}>Indicated for treatment and relief in: <strong>{m.indication}</strong></p>
+                                      <p style={{ fontSize: '0.9rem', marginTop: '0.5rem' }}>Active Ingredient: <strong style={{ color: 'var(--primary)' }}>{m.active_ingredient}</strong></p>
                                       
                                       <h4 style={{ margin: '1rem 0 0.5rem 0', color: 'var(--text-heading)' }}>💊 Dosage Instructions</h4>
                                       <p style={{ fontSize: '0.9rem', color: 'var(--text-heading)' }}>{m.dosage_instruction}</p>
@@ -665,6 +666,13 @@ function App() {
                     }`}
                   >
                     {m.content.split('\n').map((line, i) => {
+                      if (line.trim().startsWith('[⚠️ CLINICAL WARNING:')) {
+                        return (
+                          <div key={i} style={{ backgroundColor: 'var(--danger-light)', border: '1.5px solid var(--danger)', padding: '0.85rem 1.25rem', borderRadius: '8px', color: 'var(--danger)', fontWeight: 'bold', margin: '0.5rem 0 1rem 0', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.88rem', textAlign: 'left', lineHeight: '1.4' }}>
+                            {line.trim().substring(1, line.trim().length - 1)}
+                          </div>
+                        )
+                      }
                       if (line.trim().startsWith('- ')) {
                         return <li key={i} style={{ marginLeft: '1rem', marginBottom: '0.2rem' }}>{line.trim().substring(2)}</li>
                       }
