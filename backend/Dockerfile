@@ -12,7 +12,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 # Ensure sentence-transformers is explicitly installed
-RUN pip install --no-cache-dir sentence-transformers fastapi uvicorn pydantic pypdf python-multipart
+RUN pip install --no-cache-dir sentence-transformers fastapi uvicorn pydantic pypdf python-multipart langchain-groq python-dotenv
 
 # Pre-download the HuggingFace embeddings model to cache it inside the container
 RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')"

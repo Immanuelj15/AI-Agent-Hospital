@@ -14,10 +14,7 @@ services:
       - ./backend/medicines.db:/app/backend/medicines.db
       - ./backend/chroma_store:/app/backend/chroma_store
     environment:
-      - OLLAMA_HOST=http://host.docker.internal:11434
-    extra_hosts:
-      # Allow backend container to resolve local machine ports (where Ollama runs)
-      - "host.docker.internal:host-gateway"
+      - GROQ_API_KEY=${GROQ_API_KEY}
     restart: always
 
   frontend:

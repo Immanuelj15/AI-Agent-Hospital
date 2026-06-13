@@ -11,15 +11,19 @@ except ImportError:
 
 from langchain_chroma import Chroma
 from langchain_community.embeddings import HuggingFaceEmbeddings
-from langchain_community.chat_models import ChatOllama
+from langchain_groq import ChatGroq
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.documents import Document
 from langchain_text_splitters import CharacterTextSplitter
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 from backend.db import get_db_connection
 
 CHROMA_PATH = os.path.join("backend", "chroma_store")
-MODEL_NAME = "phi3:latest"
+MODEL_NAME = "llama-3.3-70b-versatile"
 EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 
 # ICMR-style Mock Clinical Treatment Guidelines
@@ -162,11 +166,11 @@ def extract_entities_and_query_db(standalone_query):
     return db_context
 
 def stream_rag_response(question, chat_history, role="clerk"):
-    """Generates a streamed clinical RAG response combining guidelines and SQL data."""
-    llm = ChatOllama(
+    """Generates a streamed clinical RAG response combining guidelines and SQL data using Groq API."""
+    llm = ChatGroq(
         model=MODEL_NAME, 
         temperature=0.1, 
-        base_url=os.getenv("OLLAMA_HOST", "http://localhost:11434")
+        groq_api_key=os.getenv("GROQ_API_KEY")
     )
     
     # 1. Contextualize user question if history exists

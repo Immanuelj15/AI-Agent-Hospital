@@ -10,6 +10,10 @@ from langchain_core.messages import HumanMessage, AIMessage
 import asyncio
 import pypdf
 import io
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 app = FastAPI(title="AyuReg API", description="FastAPI Backend for AyuReg Medical Assistant")
 
@@ -100,8 +104,10 @@ async def api_post_chat(payload: ChatPayload):
         return StreamingResponse(event_generator(), media_type="text/plain")
     except Exception as e:
         error_msg = str(e)
-        if "Connection refused" in error_msg or "Failed to establish a new connection" in error_msg:
-            raise HTTPException(status_code=503, detail="Could not connect to Ollama. Please ensure 'ollama serve' is running.")
+        if "AuthenticationError" in error_msg or "API key" in error_msg or "401" in error_msg:
+            raise HTTPException(status_code=401, detail="Authentication failed with Groq API. Please check your GROQ_API_KEY in the .env file.")
+        elif "Connection refused" in error_msg or "Failed to establish a new connection" in error_msg or "APIConnectionError" in error_msg:
+            raise HTTPException(status_code=503, detail="Could not connect to Groq API. Please check your internet connection.")
         raise HTTPException(status_code=500, detail=f"RAG processing failed: {error_msg}")
 
 @app.post("/api/upload")
