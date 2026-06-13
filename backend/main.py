@@ -88,7 +88,7 @@ async def api_post_chat(payload: ChatPayload):
     
     antibiogram_warning = None
     if is_viral and is_antibiotic:
-        antibiogram_warning = "[⚠️ CLINICAL WARNING: Guidelines strictly prohibit antibiotic use for viral infections. Antimicrobial Stewardship advises symptomatic therapy (antipyretics) instead.]\n\n"
+        antibiogram_warning = "[CLINICAL WARNING: Guidelines strictly prohibit antibiotic use for viral infections. Antimicrobial Stewardship advises symptomatic therapy (antipyretics) instead.]\n\n"
 
     try:
         # Get generator response stream, passing the user role directly

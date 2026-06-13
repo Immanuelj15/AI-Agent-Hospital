@@ -215,7 +215,7 @@ function App() {
       setMessages(prev => {
         const copy = [...prev]
         if (copy.length > 0) {
-          copy[copy.length - 1] = { role: 'assistant', content: `🚨 Error: ${err.message}. Make sure the backend FastAPI server is running.` }
+          copy[copy.length - 1] = { role: 'assistant', content: `Error: ${err.message}. Make sure the backend FastAPI server is running.` }
         }
         return copy
       })
@@ -229,44 +229,42 @@ function App() {
       {/* Navbar Header */}
       <header className="navbar">
         <div className="logo-container">
-          <div style={{ fontSize: '1.75rem' }}>🏥</div>
+          <div className="logo-indicator"></div>
           <div className="logo-text">Ayu<span>Reg</span></div>
-          <div style={{ color: 'var(--text)', fontSize: '0.8rem', marginLeft: '0.5rem', border: '1px solid var(--border)', padding: '2px 8px', borderRadius: '4px' }}>ICMR Portal</div>
+          <div className="logo-badge">ICMR</div>
         </div>
         
         {/* Role Toggle switches in Nav */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', border: '1px solid var(--border)', padding: '3px', borderRadius: '24px', backgroundColor: '#f1f5f9' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', border: '1px solid var(--border)', padding: '3px', borderRadius: '20px', backgroundColor: 'rgba(0,0,0,0.2)' }}>
           <button 
             className="btn" 
             onClick={() => setUserRole('clerk')}
             style={{ 
-              borderRadius: '20px', 
-              fontSize: '0.78rem', 
-              padding: '0.3rem 0.8rem', 
-              backgroundColor: userRole === 'clerk' ? '#fff' : 'transparent',
-              color: userRole === 'clerk' ? 'var(--text-heading)' : 'var(--text)',
-              border: 'none',
-              boxShadow: userRole === 'clerk' ? 'var(--shadow-sm)' : 'none',
-              fontWeight: userRole === 'clerk' ? '700' : '500'
+              borderRadius: '16px', 
+              fontSize: '0.75rem', 
+              padding: '0.35rem 0.85rem', 
+              backgroundColor: userRole === 'clerk' ? 'rgba(14, 165, 233, 0.15)' : 'transparent',
+              color: userRole === 'clerk' ? 'var(--clerk-theme)' : 'var(--text)',
+              border: userRole === 'clerk' ? '1px solid rgba(14, 165, 233, 0.3)' : '1px solid transparent',
+              fontWeight: '700'
             }}
           >
-            🔑 Clerk Mode
+            Clerk Access
           </button>
           <button 
             className="btn" 
             onClick={() => setUserRole('doctor')}
             style={{ 
-              borderRadius: '20px', 
-              fontSize: '0.78rem', 
-              padding: '0.3rem 0.8rem', 
-              backgroundColor: userRole === 'doctor' ? '#fff' : 'transparent',
-              color: userRole === 'doctor' ? 'var(--text-heading)' : 'var(--text)',
-              border: 'none',
-              boxShadow: userRole === 'doctor' ? 'var(--shadow-sm)' : 'none',
-              fontWeight: userRole === 'doctor' ? '700' : '500'
+              borderRadius: '16px', 
+              fontSize: '0.75rem', 
+              padding: '0.35rem 0.85rem', 
+              backgroundColor: userRole === 'doctor' ? 'rgba(139, 92, 246, 0.15)' : 'transparent',
+              color: userRole === 'doctor' ? 'var(--doctor-theme)' : 'var(--text)',
+              border: userRole === 'doctor' ? '1px solid rgba(139, 92, 246, 0.3)' : '1px solid transparent',
+              fontWeight: '700'
             }}
           >
-            🩺 Doctor (MD) Mode
+            Doctor Access
           </button>
         </div>
 
@@ -275,19 +273,19 @@ function App() {
             className={`nav-tab ${activeTab === 'dashboard' ? 'active' : ''}`}
             onClick={() => setActiveTab('dashboard')}
           >
-            📊 Analytics Dashboard
+            Dashboard
           </button>
           <button 
             className={`nav-tab ${activeTab === 'directory' ? 'active' : ''}`}
             onClick={() => setActiveTab('directory')}
           >
-            🔎 Medicine Directory
+            Medicine Directory
           </button>
           <button 
             className={`nav-tab ${activeTab === 'chat' ? 'active' : ''}`}
             onClick={() => setActiveTab('chat')}
           >
-            💬 Clinical Assistant
+            Clinical Assistant
           </button>
         </nav>
 
@@ -298,7 +296,7 @@ function App() {
             disabled={rebuilding}
             style={{ fontSize: '0.82rem', padding: '0.4rem 0.8rem' }}
           >
-            🔄 {rebuilding ? 'Rebuilding...' : 'Rebuild Registry'}
+            {rebuilding ? 'Rebuilding...' : 'Rebuild Registry'}
           </button>
           {rebuildStatus && <span style={{ fontSize: '0.75rem', marginLeft: '0.5rem', color: rebuildStatus.includes('Success') ? 'var(--success)' : 'var(--text)' }}>{rebuildStatus}</span>}
         </div>
@@ -469,7 +467,7 @@ function App() {
                           >
                             <td>#{m.id}</td>
                             <td style={{ fontWeight: '600', color: 'var(--text-heading)' }}>
-                              {m.classification === 'Prescription' ? '🔒 ' : ''}{m.name}
+                              {m.name}
                             </td>
                             <td>{m.category}</td>
                             <td>{m.dosage_form}</td>
@@ -489,41 +487,41 @@ function App() {
                           </tr>
                           {expandedMedicine === m.id && (
                             <tr>
-                              <td colSpan="9" style={{ backgroundColor: 'var(--primary-light)', padding: '1.5rem', borderBottom: '1px solid var(--border)' }}>
+                              <td colSpan="9" className="details-panel">
                                 {/* RBAC Lock for Clerk role querying Prescription drug */}
                                 {userRole === 'clerk' && m.classification === 'Prescription' ? (
-                                  <div style={{ backgroundColor: '#fff5f5', border: '1px solid #fee2e2', padding: '1.5rem', borderRadius: '8px', color: 'var(--danger)', textAlign: 'center' }}>
-                                    <h4 style={{ margin: '0 0 0.5rem 0' }}>⚠️ Access Locked (Prescription Rx Medicine)</h4>
-                                    <p style={{ fontSize: '0.9rem', color: '#7f1d1d', maxWidth: '600px', margin: '0 auto' }}>
-                                      Dispensation and detailed review for <strong>{m.name}</strong> are restricted to doctors. 
-                                      Please switch to <strong>Doctor (MD) Mode</strong> in the header tab to unlock, or request clinician authorization.
+                                  <div className="details-lock-banner">
+                                    <h4>Access Restricted (Prescription Rx Medicine)</h4>
+                                    <p>
+                                      Dispensation and detailed review for <strong>{m.name}</strong> are restricted to licensed clinicians. 
+                                      Please switch to <strong>Doctor Access</strong> in the portal header to unlock, or request physician authorization.
                                     </p>
                                   </div>
                                 ) : (
-                                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1.5rem', textAlign: 'left' }}>
-                                    <div>
-                                      <h4 style={{ margin: '0 0 0.5rem 0', color: 'var(--text-heading)' }}>📋 Clinical Indication</h4>
+                                  <div className="details-grid">
+                                    <div className="details-column">
+                                      <h4 className="details-section-title">Clinical Indication</h4>
                                       <p style={{ fontSize: '0.9rem' }}>Indicated for treatment and relief in: <strong>{m.indication}</strong></p>
                                       <p style={{ fontSize: '0.9rem', marginTop: '0.5rem' }}>Active Ingredient: <strong style={{ color: 'var(--primary)' }}>{m.active_ingredient}</strong></p>
                                       
-                                      <h4 style={{ margin: '1rem 0 0.5rem 0', color: 'var(--text-heading)' }}>💊 Dosage Instructions</h4>
+                                      <h4 className="details-section-title" style={{ marginTop: '1rem' }}>Dosage Instructions</h4>
                                       <p style={{ fontSize: '0.9rem', color: 'var(--text-heading)' }}>{m.dosage_instruction}</p>
                                       
                                       {userRole === 'doctor' && m.classification === 'Prescription' && (
                                         <button 
                                           className="btn btn-primary" 
-                                          onClick={() => alert(`✓ Prescription for ${m.name} successfully authorized and logged in clinician registry.`)}
-                                          style={{ marginTop: '1rem', width: 'auto', padding: '0.5rem 1rem', fontSize: '0.85rem' }}
+                                          onClick={() => alert(`Prescription for ${m.name} successfully authorized and logged in clinician registry.`)}
+                                          style={{ marginTop: '1rem', width: 'fit-content', padding: '0.5rem 1rem', fontSize: '0.82rem' }}
                                         >
-                                          ✓ Dispense & Authorize Rx
+                                          Authorize & Dispense
                                         </button>
                                       )}
                                     </div>
-                                    <div>
-                                      <h4 style={{ margin: '0 0 0.5rem 0', color: 'var(--text-heading)' }}>⚠️ Potential Side Effects</h4>
+                                    <div className="details-column">
+                                      <h4 className="details-section-title">Potential Side Effects</h4>
                                       <p style={{ fontSize: '0.9rem', color: 'var(--danger)' }}>{m.side_effects}</p>
                                       
-                                      <h4 style={{ margin: '1rem 0 0.5rem 0', color: 'var(--text-heading)' }}>🔄 Recommended Alternative</h4>
+                                      <h4 className="details-section-title" style={{ marginTop: '1rem' }}>Recommended Alternative</h4>
                                       <p style={{ fontSize: '0.9rem' }}>
                                         {m.stock === 'No' ? (
                                           <span>Substitute with: <strong style={{ color: 'var(--success)' }}>{m.alternative}</strong> (Available in stock)</span>
@@ -584,7 +582,7 @@ function App() {
             {/* Guidelines Sidebar with PDF/TXT uploader */}
             <aside className="chat-guidelines">
               <h3 style={{ margin: '0 0 1rem 0', fontSize: '1rem', color: 'var(--text-heading)', borderBottom: '1px solid var(--border)', paddingBottom: '0.5rem' }}>
-                📖 ICMR Guidelines
+                ICMR Guidelines
               </h3>
               <p style={{ fontSize: '0.8rem', color: 'var(--text)', marginBottom: '0.5rem' }}>
                 Select a topic to automatically prompt the Clinical RAG assistant:
@@ -603,9 +601,9 @@ function App() {
               </div>
 
               {/* Dynamic Guidelines File Uploader Widget */}
-              <div style={{ border: '2px dashed var(--border)', padding: '1rem', borderRadius: '8px', textAlign: 'center', marginTop: '1.5rem', backgroundColor: '#f8fafc' }}>
-                <h4 style={{ margin: '0 0 0.5rem 0', fontSize: '0.85rem', color: 'var(--text-heading)' }}>📤 Add Guidelines</h4>
-                <p style={{ fontSize: '0.72rem', color: 'var(--text)', marginBottom: '0.75rem' }}>Upload clinical PDF or TXT to expand vector database</p>
+              <div className="upload-widget">
+                <h4 className="upload-widget-title">Import Guidelines</h4>
+                <p className="upload-widget-desc">Upload clinical PDF or TXT to expand vector database</p>
                 <input 
                   type="file" 
                   accept=".pdf,.txt" 
@@ -640,11 +638,11 @@ function App() {
               <div className="chat-header">
                 <div>
                   <h3 style={{ margin: 0, fontSize: '1.1rem', color: 'var(--text-heading)' }}>
-                    💬 Clinical RAG Assistant <span style={{ fontSize: '0.8rem', verticalAlign: 'middle', border: '1px solid var(--border)', padding: '2px 8px', borderRadius: '12px', marginLeft: '0.5rem', backgroundColor: userRole === 'doctor' ? 'var(--primary-light)' : 'transparent', color: userRole === 'doctor' ? 'var(--primary)' : 'var(--text)' }}>
-                      {userRole === 'doctor' ? 'Doctor View' : 'Clerk View'}
+                    Clinical RAG Assistant <span style={{ fontSize: '0.75rem', verticalAlign: 'middle', border: '1px solid rgba(255,255,255,0.08)', padding: '2px 8px', borderRadius: '12px', marginLeft: '0.5rem', color: userRole === 'doctor' ? 'var(--doctor-theme)' : 'var(--clerk-theme)', backgroundColor: userRole === 'doctor' ? 'rgba(139, 92, 246, 0.1)' : 'rgba(14, 165, 233, 0.1)' }}>
+                      {userRole === 'doctor' ? 'Doctor Access' : 'Clerk Access'}
                     </span>
                   </h3>
-                  <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text)' }}>Powered by SQLite FTS5 & ChromaDB</p>
+                  <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-muted)' }}>Powered by SQLite FTS5 & ChromaDB</p>
                 </div>
                 <button 
                   className="btn btn-outline" 
@@ -666,10 +664,14 @@ function App() {
                     }`}
                   >
                     {m.content.split('\n').map((line, i) => {
-                      if (line.trim().startsWith('[⚠️ CLINICAL WARNING:')) {
+                      if (line.trim().startsWith('[⚠️ CLINICAL WARNING:') || line.trim().startsWith('[CLINICAL WARNING:')) {
+                        const warningText = line.trim()
+                          .replace('[⚠️ CLINICAL WARNING:', '')
+                          .replace('[CLINICAL WARNING:', '')
+                          .replace(']', '');
                         return (
-                          <div key={i} style={{ backgroundColor: 'var(--danger-light)', border: '1.5px solid var(--danger)', padding: '0.85rem 1.25rem', borderRadius: '8px', color: 'var(--danger)', fontWeight: 'bold', margin: '0.5rem 0 1rem 0', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.88rem', textAlign: 'left', lineHeight: '1.4' }}>
-                            {line.trim().substring(1, line.trim().length - 1)}
+                          <div key={i} className="chat-warning-container">
+                            {warningText}
                           </div>
                         )
                       }
