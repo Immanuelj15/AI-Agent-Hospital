@@ -19,7 +19,7 @@ from langchain_text_splitters import CharacterTextSplitter
 from backend.db import get_db_connection
 
 CHROMA_PATH = os.path.join("backend", "chroma_store")
-MODEL_NAME = "mistral"
+MODEL_NAME = "phi3:latest"
 EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 
 # ICMR-style Mock Clinical Treatment Guidelines
