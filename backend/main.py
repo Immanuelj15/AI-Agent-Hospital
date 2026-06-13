@@ -77,11 +77,22 @@ async def api_post_chat(payload: ChatPayload):
         elif msg.role == "assistant":
             langchain_history.append(AIMessage(content=msg.content))
             
+    # Antibiogram Stewardship Rule Check: Antibiotic usage for Viral Infection
+    q_lower = payload.question.lower()
+    is_viral = any(word in q_lower for word in ["viral", "virus", "flu", "cold", "influenza"])
+    is_antibiotic = any(word in q_lower for word in ["antibiotic", "amoxicillin", "cipro", "penicillin", "dextrophen", "antibacterial"])
+    
+    antibiogram_warning = None
+    if is_viral and is_antibiotic:
+        antibiogram_warning = "[⚠️ CLINICAL WARNING: Guidelines strictly prohibit antibiotic use for viral infections. Antimicrobial Stewardship advises symptomatic therapy (antipyretics) instead.]\n\n"
+
     try:
         # Get generator response stream, passing the user role directly
         token_stream = stream_rag_response(payload.question, langchain_history, role=payload.role)
         
         async def event_generator():
+            if antibiogram_warning:
+                yield antibiogram_warning
             for token in token_stream:
                 yield token
                 await asyncio.sleep(0.01)

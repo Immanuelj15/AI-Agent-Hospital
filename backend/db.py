@@ -69,6 +69,7 @@ def rebuild_database():
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT,
         category TEXT,
+        active_ingredient TEXT,
         dosage_form TEXT,
         strength TEXT,
         manufacturer TEXT,
@@ -88,7 +89,7 @@ def rebuild_database():
     # 2. Create the FTS5 Virtual Table for full-text search
     cursor.execute("""
     CREATE VIRTUAL TABLE IF NOT EXISTS medicines_fts USING fts5(
-        name, category, dosage_form, manufacturer, indication,
+        name, category, dosage_form, manufacturer, indication, active_ingredient,
         content='medicines',
         content_rowid='id'
     )
@@ -97,8 +98,8 @@ def rebuild_database():
     # Create triggers to keep the FTS5 table in sync with the medicines table
     cursor.execute("""
     CREATE TRIGGER IF NOT EXISTS medicines_ai AFTER INSERT ON medicines BEGIN
-        INSERT INTO medicines_fts(rowid, name, category, dosage_form, manufacturer, indication)
-        VALUES (new.id, new.name, new.category, new.dosage_form, new.manufacturer, new.indication);
+        INSERT INTO medicines_fts(rowid, name, category, dosage_form, manufacturer, indication, active_ingredient)
+        VALUES (new.id, new.name, new.category, new.dosage_form, new.manufacturer, new.indication, new.active_ingredient);
     END
     """)
     
@@ -115,7 +116,8 @@ def rebuild_database():
             category = new.category,
             dosage_form = new.dosage_form,
             manufacturer = new.manufacturer,
-            indication = new.indication
+            indication = new.indication,
+            active_ingredient = new.active_ingredient
         WHERE rowid = old.id;
     END
     """)
@@ -131,6 +133,18 @@ def rebuild_database():
     chunksize = 10000
     total_loaded = 0
     
+    # Category to mock active chemical ingredient mappings for substitution
+    active_ingredients_map = {
+        "antidiabetic": "Metformin Hydrochloride",
+        "antiviral": "Acyclovir Sodium",
+        "antibiotic": "Amoxicillin Trihydrate",
+        "antifungal": "Fluconazole",
+        "antipyretic": "Paracetamol",
+        "analgesic": "Ibuprofen",
+        "antidepressant": "Sertraline",
+        "antiseptic": "Chlorhexidine Gluconate"
+    }
+
     for chunk in pd.read_csv(CSV_PATH, chunksize=chunksize):
         chunk.columns = [c.strip() for c in chunk.columns]
         
@@ -154,16 +168,19 @@ def rebuild_database():
             dosage_instruction = get_dosage_instruction(dosage_form)
             side_effects = get_side_effects(category)
             
+            # Resolve mock active ingredient chemically
+            active_ingredient = active_ingredients_map.get(category.lower(), "Generic Active Agent")
+            
             batch.append((
-                name, category, dosage_form, strength, manufacturer, 
+                name, category, active_ingredient, dosage_form, strength, manufacturer, 
                 indication, classification, price, stock, dosage_instruction, side_effects
             ))
             
         cursor.executemany("""
         INSERT INTO medicines (
-            name, category, dosage_form, strength, manufacturer, 
+            name, category, active_ingredient, dosage_form, strength, manufacturer, 
             indication, classification, price, stock, dosage_instruction, side_effects
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, batch)
         conn.commit()
         total_loaded += len(batch)
@@ -171,7 +188,7 @@ def rebuild_database():
         
     # Rebuild FTS5 table index initially (in case triggers didn't run for batch load)
     print("Rebuilding FTS5 Virtual Table index...")
-    cursor.execute("INSERT INTO medicines_fts(rowid, name, category, dosage_form, manufacturer, indication) SELECT id, name, category, dosage_form, manufacturer, indication FROM medicines")
+    cursor.execute("INSERT INTO medicines_fts(rowid, name, category, dosage_form, manufacturer, indication, active_ingredient) SELECT id, name, category, dosage_form, manufacturer, indication, active_ingredient FROM medicines")
     conn.commit()
     
     conn.close()
@@ -229,12 +246,12 @@ def search_medicines(search_str=None, category=None, classification=None, page=1
     
     medicines = [dict(row) for row in rows]
     
-    # Append alternatives dynamically
+    # Append alternatives dynamically based on chemical active ingredient
     for med in medicines:
         if med['stock'] == 'No':
             cursor.execute(
-                "SELECT name, price FROM medicines WHERE category = ? AND stock = 'Yes' LIMIT 1",
-                (med['category'],)
+                "SELECT name, price FROM medicines WHERE active_ingredient = ? AND stock = 'Yes' LIMIT 1",
+                (med['active_ingredient'],)
             )
             alt = cursor.fetchone()
             med['alternative'] = alt['name'] if alt else "Generic Substitute"
