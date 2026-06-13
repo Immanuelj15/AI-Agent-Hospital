@@ -1,0 +1,32 @@
+# docker-compose.yml
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: ayureg_backend
+    ports:
+      - "8000:8000"
+    volumes:
+      # Persist SQLite and Chroma database files on the host
+      - ./backend/medicines.db:/app/backend/medicines.db
+      - ./backend/chroma_store:/app/backend/chroma_store
+    environment:
+      - OLLAMA_HOST=http://host.docker.internal:11434
+    extra_hosts:
+      # Allow backend container to resolve local machine ports (where Ollama runs)
+      - "host.docker.internal:host-gateway"
+    restart: always
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: ayureg_frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    restart: always
