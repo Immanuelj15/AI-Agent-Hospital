@@ -15,6 +15,7 @@ from langchain_community.chat_models import ChatOllama
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.documents import Document
+from langchain_text_splitters import CharacterTextSplitter
 from backend.db import get_db_connection
 
 CHROMA_PATH = os.path.join("backend", "chroma_store")
@@ -196,7 +197,11 @@ def extract_entities_and_query_db(standalone_query):
 
 def stream_rag_response(question, chat_history):
     """Generates a streamed clinical RAG response combining guidelines and SQL data."""
-    llm = ChatOllama(model=MODEL_NAME, temperature=0.1)
+    llm = ChatOllama(
+        model=MODEL_NAME, 
+        temperature=0.1, 
+        base_url=os.getenv("OLLAMA_HOST", "http://localhost:11434")
+    )
     
     # 1. Contextualize user question if history exists
     standalone_question = question

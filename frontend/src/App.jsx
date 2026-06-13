@@ -1,6 +1,8 @@
 // frontend/src/App.jsx
 import React, { useState, useEffect, useRef } from 'react'
 
+const API_BASE = window.location.port === '5173' ? 'http://127.0.0.1:8000' : '';
+
 function App() {
   const [activeTab, setActiveTab] = useState('dashboard')
 
@@ -64,7 +66,7 @@ function App() {
   const fetchStats = async () => {
     setLoadingStats(true)
     try {
-      const res = await fetch('http://localhost:8000/api/stats')
+      const res = await fetch(`${API_BASE}/api/stats`)
       if (res.ok) {
         const data = await res.json()
         setStats(data)
@@ -81,7 +83,7 @@ function App() {
     const currentPage = resetPage ? 1 : page
     if (resetPage) setPage(1)
     
-    let url = `http://localhost:8000/api/medicines?page=${currentPage}&limit=15`
+    let url = `${API_BASE}/api/medicines?page=${currentPage}&limit=15`
     if (search) url += `&search=${encodeURIComponent(search)}`
     if (category) url += `&category=${encodeURIComponent(category)}`
     if (classification) url += `&classification=${encodeURIComponent(classification)}`
@@ -105,7 +107,7 @@ function App() {
     setRebuilding(true)
     setRebuildStatus('Processing...')
     try {
-      const res = await fetch('http://localhost:8000/api/rebuild', { method: 'POST' })
+      const res = await fetch(`${API_BASE}/api/rebuild`, { method: 'POST' })
       if (res.ok) {
         setRebuildStatus('Success!')
         alert("Database and vector guidelines successfully rebuilt!")
@@ -133,7 +135,7 @@ function App() {
     formData.append('file', file)
 
     try {
-      const res = await fetch('http://localhost:8000/api/upload', {
+      const res = await fetch(`${API_BASE}/api/upload`, {
         method: 'POST',
         body: formData
       })
@@ -171,7 +173,7 @@ function App() {
     setMessages(prev => [...prev, { role: 'assistant', content: '' }])
 
     try {
-      const response = await fetch('http://localhost:8000/api/chat', {
+      const response = await fetch(`${API_BASE}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

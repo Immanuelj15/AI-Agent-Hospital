@@ -4,7 +4,7 @@ echo       Starting AyuReg Clinical Assistant Portal
 echo =========================================================
 
 echo Starting Python FastAPI Backend Server...
-start cmd /k "call venv\Scripts\activate.bat && uvicorn backend.main:app --reload --port 8000"
+start cmd /k "call venv\Scripts\activate.bat && uvicorn backend.main:app --reload --host 127.0.0.1 --port 8000"
 
 echo Starting React Frontend Dev Server...
 start cmd /k "cd frontend && npm run dev"

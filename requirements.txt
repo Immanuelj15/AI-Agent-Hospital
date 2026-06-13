@@ -9,3 +9,4 @@ fastapi
 uvicorn
 pypdf
 sentence-transformers
+python-multipart
