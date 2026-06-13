@@ -1,7 +1,7 @@
 // frontend/src/App.jsx
 import React, { useState, useEffect, useRef } from 'react'
 
-const API_BASE = window.location.port === '5173' ? 'http://127.0.0.1:8000' : '';
+const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'http://127.0.0.1:8000' : '';
 
 function App() {
   const [activeTab, setActiveTab] = useState('dashboard')
