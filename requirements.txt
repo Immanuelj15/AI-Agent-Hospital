@@ -2,13 +2,11 @@ langchain
 langchain-community
 langchain-chroma
 chromadb
-llama-index
 streamlit
 pandas
 fastapi
 uvicorn
 pypdf
-sentence-transformers
 python-multipart
 langchain-groq
 python-dotenv

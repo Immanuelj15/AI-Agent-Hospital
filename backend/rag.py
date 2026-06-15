@@ -10,7 +10,39 @@ except ImportError:
     pass
 
 from langchain_chroma import Chroma
-from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_core.embeddings import Embeddings
+import requests
+from typing import List
+
+class HuggingFaceInferenceEmbeddings(Embeddings):
+    def __init__(self, model_name: str = "sentence-transformers/all-MiniLM-L6-v2"):
+        self.model_name = model_name
+        self.api_url = f"https://api-inference.huggingface.co/models/{model_name}"
+        self.headers = {}
+        hf_token = os.getenv("HF_TOKEN")
+        if hf_token:
+            self.headers["Authorization"] = f"Bearer {hf_token}"
+
+    def _embed(self, texts: List[str]) -> List[List[float]]:
+        try:
+            response = requests.post(
+                self.api_url,
+                headers=self.headers,
+                json={"inputs": texts, "options": {"wait_for_model": True}},
+                timeout=30
+            )
+            if response.status_code != 200:
+                raise ValueError(f"HuggingFace API error (status {response.status_code}): {response.text}")
+            return response.json()
+        except Exception as e:
+            print(f"Embedding request failed: {e}")
+            raise e
+
+    def embed_documents(self, texts: List[str]) -> List[List[float]]:
+        return self._embed(texts)
+
+    def embed_query(self, text: str) -> List[float]:
+        return self._embed([text])[0]
 from langchain_groq import ChatGroq
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.output_parsers import StrOutputParser
@@ -80,7 +112,7 @@ def build_vectorstore(persist_dir=CHROMA_PATH):
             print(f"Warning: Could not fully delete directory: {e}")
             
     print(f"Creating Vector Store using {EMBEDDING_MODEL} embeddings...")
-    embeddings = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)
+    embeddings = HuggingFaceInferenceEmbeddings(model_name=EMBEDDING_MODEL)
     
     vectordb = Chroma.from_documents(
         documents=docs, 
@@ -100,7 +132,7 @@ def add_document_to_vectorstore(text, title, persist_dir=CHROMA_PATH):
     docs = [Document(page_content=f"Title: {title}\nContent: {text}\n", metadata={"title": title})]
     split_docs = text_splitter.split_documents(docs)
     
-    embeddings = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)
+    embeddings = HuggingFaceInferenceEmbeddings(model_name=EMBEDDING_MODEL)
     vectordb = Chroma(persist_directory=persist_dir, embedding_function=embeddings)
     vectordb.add_documents(split_docs)
     print("Guidelines vector store successfully updated.")
@@ -201,7 +233,7 @@ def stream_rag_response(question, chat_history, role="clerk"):
         print(f"Contextualized Query: {standalone_question}")
         
     # 2. Retrieve Guidelines from ChromaDB
-    embeddings = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)
+    embeddings = HuggingFaceInferenceEmbeddings(model_name=EMBEDDING_MODEL)
     vectordb = Chroma(persist_directory=CHROMA_PATH, embedding_function=embeddings)
     retriever = vectordb.as_retriever(search_kwargs={"k": 2})
     guideline_docs = retriever.invoke(standalone_question)
