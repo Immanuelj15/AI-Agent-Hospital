@@ -4,18 +4,49 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import List, Dict, Optional
-from backend.db import search_medicines, get_stats, rebuild_database
+from backend.db import search_medicines, get_stats, rebuild_database, get_db_connection
 from backend.rag import stream_rag_response, build_vectorstore, add_document_to_vectorstore
 from langchain_core.messages import HumanMessage, AIMessage
+from contextlib import asynccontextmanager
 import asyncio
 import pypdf
 import io
+import os
 from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()
 
-app = FastAPI(title="AyuReg API", description="FastAPI Backend for AyuReg Medical Assistant")
+def _db_is_initialized() -> bool:
+    """Returns True if the medicines table exists and has at least one row."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM medicines")
+        count = cursor.fetchone()[0]
+        conn.close()
+        return count > 0
+    except Exception:
+        return False
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Auto-initialize the SQLite database on first startup if it is missing."""
+    if not _db_is_initialized():
+        print("=== AyuReg Startup: medicines table not found — building database from CSV... ===")
+        try:
+            success = rebuild_database()
+            if success:
+                print("=== AyuReg Startup: Database built successfully! ===")
+            else:
+                print("=== AyuReg Startup WARNING: Database build failed (CSV missing?) ===")
+        except Exception as e:
+            print(f"=== AyuReg Startup ERROR: {e} ===")
+    else:
+        print("=== AyuReg Startup: medicines table already initialized. ===")
+    yield
+
+app = FastAPI(title="AyuReg API", description="FastAPI Backend for AyuReg Medical Assistant", lifespan=lifespan)
 
 # CORS setup
 app.add_middleware(
