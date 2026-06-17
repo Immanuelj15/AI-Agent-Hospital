@@ -9,50 +9,19 @@ try:
 except ImportError:
     pass
 
-from langchain_chroma import Chroma
-from langchain_core.embeddings import Embeddings
-import requests
-from typing import List
-
-class HuggingFaceInferenceEmbeddings(Embeddings):
-    def __init__(self, model_name: str = "sentence-transformers/all-MiniLM-L6-v2"):
-        self.model_name = model_name
-        self.api_url = f"https://api-inference.huggingface.co/models/{model_name}"
-        self.headers = {}
-        hf_token = os.getenv("HF_TOKEN")
-        if hf_token:
-            self.headers["Authorization"] = f"Bearer {hf_token}"
-
-    def _embed(self, texts: List[str]) -> List[List[float]]:
-        try:
-            response = requests.post(
-                self.api_url,
-                headers=self.headers,
-                json={"inputs": texts, "options": {"wait_for_model": True}},
-                timeout=30
-            )
-            if response.status_code != 200:
-                raise ValueError(f"HuggingFace API error (status {response.status_code}): {response.text}")
-            return response.json()
-        except Exception as e:
-            print(f"Embedding request failed: {e}")
-            raise e
-
-    def embed_documents(self, texts: List[str]) -> List[List[float]]:
-        return self._embed(texts)
-
-    def embed_query(self, text: str) -> List[float]:
-        return self._embed([text])[0]
 from langchain_groq import ChatGroq
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.documents import Document
-from langchain_text_splitters import CharacterTextSplitter
 from dotenv import load_dotenv
+import json
 
 # Load environment variables
 load_dotenv()
 from backend.db import get_db_connection
+
+GUIDELINES_FILE = os.path.join("backend", "guidelines.json")
+
 
 CHROMA_PATH = os.path.join("backend", "chroma_store")
 MODEL_NAME = "llama-3.3-70b-versatile"
@@ -94,49 +63,53 @@ CLINICAL_GUIDELINES = [
     }
 ]
 
-def build_vectorstore(persist_dir=CHROMA_PATH):
-    """Builds the ChromaDB vector store containing medical research guidelines."""
-    print("Loading Clinical Guidelines...")
-    docs = []
-    for g in CLINICAL_GUIDELINES:
-        content = f"Title: {g['title']}\nContent: {g['content']}\n"
-        metadata = {"title": g['title']}
-        docs.append(Document(page_content=content, metadata=metadata))
-        
-    # Clean up existing vector database directory
-    if os.path.exists(persist_dir):
-        print(f"Clearing existing vector store at {persist_dir}...")
-        try:
-            shutil.rmtree(persist_dir)
-        except Exception as e:
-            print(f"Warning: Could not fully delete directory: {e}")
-            
-    print(f"Creating Vector Store using {EMBEDDING_MODEL} embeddings...")
-    embeddings = HuggingFaceInferenceEmbeddings(model_name=EMBEDDING_MODEL)
-    
-    vectordb = Chroma.from_documents(
-        documents=docs, 
-        embedding=embeddings, 
-        persist_directory=persist_dir
-    )
-    print("Guidelines Vector Store successfully built.")
-    return vectordb
+def load_local_guidelines():
+    """Loads guidelines from local JSON file. Seeds it with defaults if missing."""
+    if not os.path.exists(GUIDELINES_FILE):
+        os.makedirs(os.path.dirname(GUIDELINES_FILE), exist_ok=True)
+        with open(GUIDELINES_FILE, "w", encoding="utf-8") as f:
+            json.dump(CLINICAL_GUIDELINES, f, indent=4)
+        return CLINICAL_GUIDELINES
+    try:
+        with open(GUIDELINES_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as e:
+        print(f"Error loading local guidelines: {e}")
+        return CLINICAL_GUIDELINES
 
-def add_document_to_vectorstore(text, title, persist_dir=CHROMA_PATH):
-    """Splits text and adds the documents to the guidelines vector store."""
+def build_vectorstore(persist_dir=None):
+    """Rebuilds guidelines database JSON file."""
+    print("Rebuilding guidelines JSON DB...")
+    if os.path.exists(GUIDELINES_FILE):
+        try:
+            os.remove(GUIDELINES_FILE)
+        except Exception as e:
+            print(f"Warning: Could not remove guidelines file: {e}")
+    load_local_guidelines()
+    print("Guidelines JSON DB successfully built.")
+    return None
+
+def add_document_to_vectorstore(text, title, persist_dir=None):
+    """Appends a new clinical guideline document to the local JSON DB."""
     if not text.strip():
         return False
-        
-    print(f"Adding clinical guideline: '{title}' to vector store...")
-    text_splitter = CharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
-    docs = [Document(page_content=f"Title: {title}\nContent: {text}\n", metadata={"title": title})]
-    split_docs = text_splitter.split_documents(docs)
+    print(f"Adding clinical guideline: '{title}' to local database...")
+    guidelines_list = load_local_guidelines()
     
-    embeddings = HuggingFaceInferenceEmbeddings(model_name=EMBEDDING_MODEL)
-    vectordb = Chroma(persist_directory=persist_dir, embedding_function=embeddings)
-    vectordb.add_documents(split_docs)
-    print("Guidelines vector store successfully updated.")
-    return True
+    # Append the new guideline
+    guidelines_list.append({
+        "title": title,
+        "content": text
+    })
+    
+    try:
+        with open(GUIDELINES_FILE, "w", encoding="utf-8") as f:
+            json.dump(guidelines_list, f, indent=4)
+        print("Guidelines local database successfully updated.")
+        return True
+    except Exception as e:
+        print(f"Error saving updated guidelines: {e}")
+        return False
 
 def extract_entities_and_query_db(standalone_query):
     """
@@ -196,6 +169,38 @@ def extract_entities_and_query_db(standalone_query):
         conn.close()
         
     return db_context
+        
+def retrieve_relevant_guidelines(query, k=2):
+    """Retrieves top k relevant guidelines based on keyword overlap."""
+    guidelines_list = load_local_guidelines()
+    
+    # Clean the query for word matching
+    clean_query = "".join([c if c.isalnum() or c.isspace() else " " for c in query]).lower()
+    query_words = set(w for w in clean_query.split() if len(w) > 2)
+    
+    # Exclude common stop words from keyword matching
+    stopwords = {"what", "is", "its", "the", "are", "you", "have", "for", "and", "can", "with", "this", "that", "from", "please", "show", "tell", "price", "stock", "dosage", "form", "manufacturer"}
+    query_words = query_words - stopwords
+    
+    if not query_words:
+        # Return first k guidelines by default if no distinct keywords
+        return guidelines_list[:k]
+        
+    scored_guidelines = []
+    for g in guidelines_list:
+        content_text = f"{g['title']} {g['content']}".lower()
+        clean_content = "".join([c if c.isalnum() or c.isspace() else " " for c in content_text])
+        content_words = set(clean_content.split())
+        
+        # Intersection score
+        score = len(query_words.intersection(content_words))
+        scored_guidelines.append((score, g))
+        
+    # Sort descending by score
+    scored_guidelines.sort(key=lambda x: x[0], reverse=True)
+    
+    # Return top k matches
+    return [item[1] for item in scored_guidelines[:k]]
 
 def stream_rag_response(question, chat_history, role="clerk"):
     """Generates a streamed clinical RAG response combining guidelines and SQL data using Groq API."""
@@ -232,12 +237,9 @@ def stream_rag_response(question, chat_history, role="clerk"):
         standalone_question = standalone_question.strip().strip('"').strip("'")
         print(f"Contextualized Query: {standalone_question}")
         
-    # 2. Retrieve Guidelines from ChromaDB
-    embeddings = HuggingFaceInferenceEmbeddings(model_name=EMBEDDING_MODEL)
-    vectordb = Chroma(persist_directory=CHROMA_PATH, embedding_function=embeddings)
-    retriever = vectordb.as_retriever(search_kwargs={"k": 2})
-    guideline_docs = retriever.invoke(standalone_question)
-    guideline_context = "\n".join(doc.page_content for doc in guideline_docs)
+    # 2. Retrieve Guidelines using local keyword scoring
+    relevant_guidelines = retrieve_relevant_guidelines(standalone_question, k=2)
+    guideline_context = "\n".join(f"Title: {g['title']}\nContent: {g['content']}\n" for g in relevant_guidelines)
     
     # 3. Retrieve Live Database Matches
     db_context = extract_entities_and_query_db(standalone_question)
