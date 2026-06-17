@@ -18,6 +18,10 @@ RUN pip install --no-cache-dir fastapi uvicorn pydantic pypdf python-multipart l
 COPY backend/ ./backend/
 COPY medicine_dataset.csv .
 
+# Pre-build the SQLite database at image build time so the app starts instantly
+# This embeds the 50k-row medicines.db into the Docker image layer
+RUN python -c "from backend.db import rebuild_database; ok = rebuild_database(); print('DB build:', 'OK' if ok else 'FAILED')"
+
 EXPOSE 8000
 
 ENV PYTHONUNBUFFERED=1
