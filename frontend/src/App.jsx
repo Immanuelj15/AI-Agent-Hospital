@@ -1,7 +1,10 @@
 // frontend/src/App.jsx
 import React, { useState, useEffect, useRef } from 'react'
 
-const API_BASE = import.meta.env.VITE_API_BASE || (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'http://127.0.0.1:8000' : '');
+let API_BASE = import.meta.env.VITE_API_BASE || (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'http://127.0.0.1:8000' : '');
+if (API_BASE.endsWith('/')) {
+  API_BASE = API_BASE.slice(0, -1);
+}
 
 function App() {
   const [activeTab, setActiveTab] = useState('dashboard')
